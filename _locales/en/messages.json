@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "Network Speed Monitor",
+    "description": "Extension name shown by Firefox."
+  },
+  "extensionDescription": {
+    "message": "Continuously monitor Internet connectivity, latency, outages, and availability.",
+    "description": "Extension description shown by Firefox."
+  }
+}
