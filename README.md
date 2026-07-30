@@ -40,6 +40,8 @@ Before AMO submission, replace `network-speed-monitor@example.local` in `manifes
 
 The selected probe host and optional public-IP service receive normal HTTPS requests needed to provide their responses. No browsing data is sent to either service.
 
+The full privacy policy is available in [PRIVACY.md](PRIVACY.md).
+
 ## License
 
 Network Speed Monitor is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for the full text.
