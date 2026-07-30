@@ -20,10 +20,13 @@ Requirements: Node.js 20+ and Firefox 152+ for desktop or Android.
 npm install
 npm run format
 npm run check
+npm run build-for-amo
 npm run package
 ```
 
 The distributable archive is created in `web-ext-artifacts/`. For day-to-day testing, run `npm run dev`; it builds the extension and opens Firefox's **This Firefox** developer page. Choose **Load Temporary Add-on** once and select `dist/manifest.json`. Firefox keeps that temporary add-on running in your normal browser session; use **Reload** on the same page after later builds.
+
+For AMO source-code review, submit this repository as the source package. It contains the TypeScript source, `package-lock.json`, and the `build-for-amo` script that reproduces the Firefox build in `dist/`.
 
 The bundled Google probe and public-IP service are declared in the manifest. Selecting a custom probe URL requests optional access to that host when you save or start monitoring with it.
 
