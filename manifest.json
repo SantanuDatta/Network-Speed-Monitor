@@ -1,0 +1,60 @@
+{
+  "manifest_version": 2,
+  "name": "__MSG_extensionName__",
+  "version": "1.0.1",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
+  "icons": {
+    "48": "assets/icons/icon-white.svg",
+    "96": "assets/icons/icon-white.svg"
+  },
+  "permissions": ["storage", "https://www.google.com/*", "https://api.ipify.org/*"],
+  "optional_permissions": ["https://*/*"],
+  "background": {
+    "scripts": ["types.js", "format.js", "model.js", "storage.js", "monitor.js", "background.js"],
+    "persistent": true
+  },
+  "browser_action": {
+    "default_area": "navbar",
+    "default_title": "Network Speed Monitor",
+    "default_icon": {
+      "16": "assets/icons/icon-white.svg",
+      "32": "assets/icons/icon-white.svg",
+      "48": "assets/icons/icon-white.svg"
+    },
+    "theme_icons": [
+      {
+        "light": "assets/icons/icon-white.svg",
+        "dark": "assets/icons/icon-black.svg",
+        "size": 16
+      },
+      {
+        "light": "assets/icons/icon-white.svg",
+        "dark": "assets/icons/icon-black.svg",
+        "size": 32
+      },
+      {
+        "light": "assets/icons/icon-white.svg",
+        "dark": "assets/icons/icon-black.svg",
+        "size": 48
+      }
+    ],
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "dashboard.html#settings",
+    "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "network-speed-monitor@example.local",
+      "data_collection_permissions": {
+        "required": ["none"]
+      },
+      "strict_min_version": "152.0"
+    },
+    "gecko_android": {
+      "strict_min_version": "152.0"
+    }
+  }
+}
