@@ -35,6 +35,15 @@ body {
   background: var(--bg);
   color: var(--text);
 }
+
+html.popup-document {
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+html.popup-document::-webkit-scrollbar {
+  display: none;
+}
 button,
 input,
 select {
@@ -53,8 +62,17 @@ button.danger {
   background: #bb3d48;
 }
 .popup {
-  width: 390px;
+  width: min(300px, 100vw);
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
   background: radial-gradient(circle at 100% 0%, rgb(99 102 241 / 18%), transparent 42%), var(--bg);
+}
+
+.popup::-webkit-scrollbar {
+  display: none;
 }
 
 .popup-loading {
@@ -574,6 +592,11 @@ th {
   width: max-content;
 }
 @media (max-width: 720px) {
+  .popup {
+    width: 100%;
+    max-width: none;
+  }
+
   .dashboard {
     display: block;
   }
@@ -670,6 +693,64 @@ th {
   }
   .settings-save {
     width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .popup-shell.shadcn-popup {
+    padding: 12px;
+  }
+
+  .shadcn-popup .popup-header {
+    margin-bottom: 12px;
+  }
+
+  .shadcn-popup .status-card {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .shadcn-popup .status-card-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .shadcn-popup .status-actions {
+    gap: 4px;
+  }
+
+  .shadcn-popup .status-actions .icon-button {
+    width: 29px;
+    height: 29px;
+  }
+
+  .shadcn-popup .data-card {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .shadcn-popup .summary-card {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .shadcn-popup .navigation-card {
+    padding: 4px;
+  }
+
+  .shadcn-popup .data-card,
+  .shadcn-popup .summary-card,
+  .shadcn-popup .navigation-card {
+    margin-top: 8px;
+  }
+
+  .shadcn-popup .data-row {
+    min-height: 38px;
+  }
+
+  .shadcn-popup .popup-footer {
+    margin-top: 8px;
   }
 }
 :root[data-theme="light"] {
@@ -1182,7 +1263,7 @@ th {
 
 .shadcn-popup .navigation-card {
   display: block;
-  padding: 2px 14px;
+  padding: 6px 8px;
 }
 
 .shadcn-popup .navigation-row {
@@ -1190,26 +1271,33 @@ th {
   width: 100%;
   align-items: center;
   gap: 10px;
-  min-height: 40px;
-  padding: 0;
+  min-height: 38px;
+  padding: 0 10px;
   border: 0;
-  border-radius: 0;
+  border-radius: 7px;
   background: transparent;
   color: var(--text);
   font-size: 13px;
   font-weight: 600;
   text-align: left;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
-.shadcn-popup .navigation-row:hover,
-.shadcn-popup .navigation-row:focus-visible {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+.shadcn-popup .navigation-row:hover {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
   color: var(--text);
+}
+
+.shadcn-popup .navigation-row:focus-visible {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 65%, transparent);
   outline: none;
 }
 
 .shadcn-popup .navigation-row + .navigation-row {
-  border-top: 1px solid var(--line);
+  margin-top: 2px;
 }
 
 .shadcn-popup .navigation-row > .hero-icon:first-child {
@@ -1285,6 +1373,17 @@ th {
   gap: 14px;
 }
 
+.switch-field-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.switch-field-row .switch-field {
+  flex: 1;
+  min-width: 0;
+}
+
 .settings-field-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1296,6 +1395,7 @@ th {
 .settings-field {
   display: grid;
   gap: 7px;
+  min-width: 0;
 }
 
 .settings-field > span {
@@ -1323,6 +1423,7 @@ th {
 
 .select-control {
   position: relative;
+  min-width: 0;
 }
 
 .select-control::after {
@@ -1340,6 +1441,7 @@ th {
 
 .select-control select {
   width: 100%;
+  min-width: 0;
   min-height: 42px;
   padding: 10px 38px 10px 12px;
   border: 1px solid var(--line);
@@ -1420,6 +1522,26 @@ th {
   outline-offset: 2px;
 }
 
+.sound-test {
+  min-width: 62px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.sound-test:hover {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.sound-test:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .settings-actions {
   display: flex;
   align-items: center;
@@ -1435,4 +1557,67 @@ th {
 
 .settings-actions .quiet {
   margin: 0;
+}
+
+/* Keep settings controls usable on narrow Firefox and Android viewports. */
+@media (max-width: 720px) {
+  .dashboard-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    gap: 8px;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-nav .nav {
+    width: auto;
+    flex: 0 0 auto;
+    min-width: 0;
+    padding: 8px 12px;
+    text-align: left;
+    white-space: nowrap;
+    line-height: 1.2;
+  }
+
+  .settings-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-field {
+    min-width: 0;
+  }
+
+  .switch-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+
+  .switch-field-row .switch-field {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .sound-test {
+    width: 100%;
+    min-height: 36px;
+  }
 }

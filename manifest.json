@@ -1,12 +1,12 @@
 {
   "manifest_version": 2,
   "name": "__MSG_extensionName__",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
   "icons": {
-    "48": "assets/icons/icon-white.svg",
-    "96": "assets/icons/icon-white.svg"
+    "48": "assets/icons/listing-48.png",
+    "96": "assets/icons/listing-96.png"
   },
   "permissions": ["storage", "https://www.google.com/*", "https://api.ipify.org/*"],
   "optional_permissions": ["https://*/*"],
@@ -18,24 +18,24 @@
     "default_area": "navbar",
     "default_title": "Network Speed Monitor",
     "default_icon": {
-      "16": "assets/icons/icon-white.svg",
-      "32": "assets/icons/icon-white.svg",
-      "48": "assets/icons/icon-white.svg"
+      "16": "assets/icons/toolbar-white-16.png",
+      "32": "assets/icons/toolbar-white-32.png",
+      "48": "assets/icons/toolbar-white-48.png"
     },
     "theme_icons": [
       {
-        "light": "assets/icons/icon-white.svg",
-        "dark": "assets/icons/icon-black.svg",
+        "light": "assets/icons/toolbar-white-16.png",
+        "dark": "assets/icons/toolbar-black-16.png",
         "size": 16
       },
       {
-        "light": "assets/icons/icon-white.svg",
-        "dark": "assets/icons/icon-black.svg",
+        "light": "assets/icons/toolbar-white-32.png",
+        "dark": "assets/icons/toolbar-black-32.png",
         "size": 32
       },
       {
-        "light": "assets/icons/icon-white.svg",
-        "dark": "assets/icons/icon-black.svg",
+        "light": "assets/icons/toolbar-white-48.png",
+        "dark": "assets/icons/toolbar-black-48.png",
         "size": 48
       }
     ],

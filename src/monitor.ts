@@ -2,13 +2,16 @@ const PROBE_TIMEOUT_MS = 8_000;
 const IP_REFRESH_INTERVAL_MS = 5 * 60_000;
 const MISSED_HEARTBEAT_MULTIPLIER = 3;
 const IPIFY_ORIGIN = "https://api.ipify.org/*";
-const TOOLBAR_UPDATE_DELAY_MS = 1_500;
+const TOOLBAR_UPDATE_DELAY_MS = 250;
+const SOUND_GAIN = 0.07;
+const SOUND_DURATION_SECONDS = 0.16;
 let toolbarStyleInitialized = false;
 let lastToolbarTitle: string | undefined;
 let lastToolbarBadge: string | undefined;
 let toolbarUpdatesPaused = false;
 let pendingToolbarRuntime: RuntimeState | undefined;
 let toolbarUpdateTimer: number | undefined;
+let audioContext: AudioContext | undefined;
 
 interface ProbeResult {
   status: ConnectionStatus;
@@ -247,7 +250,7 @@ class ConnectionMonitor {
           this.data.settings.soundOffline;
 
     if (shouldPlay) {
-      playTone(status === "online" ? 880 : 220);
+      void playAlertSound(status === "online" ? "online" : "offline");
     }
   }
 }
@@ -265,26 +268,48 @@ function withCacheBuster(endpoint: URL, timestamp: number): string {
   return endpoint.toString();
 }
 
-function playTone(frequency: number): void {
+async function playAlertSound(sound: AlertSound): Promise<boolean> {
   const AudioContextConstructor =
     window.AudioContext ||
     (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
   if (!AudioContextConstructor) {
-    return;
+    return false;
   }
 
-  const context = new AudioContextConstructor();
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
+  audioContext ??= new AudioContextConstructor();
 
-  oscillator.frequency.value = frequency;
-  gain.gain.setValueAtTime(0.07, context.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.16);
-  oscillator.connect(gain).connect(context.destination);
-  oscillator.addEventListener("ended", () => void context.close());
-  oscillator.start();
-  oscillator.stop(context.currentTime + 0.16);
+  try {
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
+    if (audioContext.state !== "running") {
+      return false;
+    }
+
+    const frequency = sound === "online" ? 880 : 220;
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const startedAt = audioContext.currentTime;
+    const endedAt = startedAt + SOUND_DURATION_SECONDS;
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(frequency, startedAt);
+    gain.gain.setValueAtTime(0.0001, startedAt);
+    gain.gain.exponentialRampToValueAtTime(SOUND_GAIN, startedAt + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, endedAt);
+    oscillator.connect(gain).connect(audioContext.destination);
+    oscillator.addEventListener("ended", () => {
+      oscillator.disconnect();
+      gain.disconnect();
+    });
+    oscillator.start(startedAt);
+    oscillator.stop(endedAt);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function updateToolbar(runtime: RuntimeState): Promise<void> {

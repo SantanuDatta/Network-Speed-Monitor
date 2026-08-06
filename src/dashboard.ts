@@ -119,9 +119,12 @@ function renderSwitchField(
   name: string,
   label: string,
   checked: boolean,
-  description = ""
+  description = "",
+  testSound?: AlertSound
 ): string {
-  return `<label class="switch-field"><span><strong>${label}</strong>${description ? `<small>${description}</small>` : ""}</span><input name="${name}" type="checkbox" ${checked ? "checked" : ""} /><i aria-hidden="true"></i></label>`;
+  const field = `<label class="switch-field"><span><strong>${label}</strong>${description ? `<small>${description}</small>` : ""}</span><input name="${name}" type="checkbox" ${checked ? "checked" : ""} /><i aria-hidden="true"></i></label>`;
+  if (!testSound) return field;
+  return `<div class="switch-field-row">${field}<button class="sound-test" type="button" data-sound-test="${testSound}">Test</button></div>`;
 }
 
 function settings(): string {
@@ -135,7 +138,8 @@ function settings(): string {
       [2, "Every 2 seconds"],
       [3, "Every 3 seconds"],
       [5, "Every 5 seconds"]
-    ]
+    ],
+    "How often the endpoint is checked."
   )}<label class="settings-field"><span>HTTPS ping URL</span><input name="endpoint" required type="url" value="${esc(s.endpoint)}" /><small>Changing this asks Firefox for access to that host.</small></label></div></section><section class="settings-section"><div class="settings-section-header"><h2>Appearance</h2><p>The supplied logo remains the toolbar icon.</p></div><div class="settings-field-grid">${renderSelectField(
     "theme",
     "Theme",
@@ -151,7 +155,7 @@ function settings(): string {
   ])}${renderSelectField("precision", "Availability precision", s.precision, [
     [2, "Regular (2 digits)"],
     [7, "Expert (7 digits)"]
-  ])}</div></section><section class="settings-section"><div class="settings-section-header"><h2>Alerts</h2><p>Play a short tone when the connection state changes.</p></div><div class="switch-field-grid">${renderSwitchField("soundOnline", "Online sound", s.soundOnline, "When the connection returns.")}${renderSwitchField("soundOffline", "Offline sound", s.soundOffline, "When a probe fails.")}</div></section><div class="settings-actions"><button class="settings-save" type="submit">Save settings</button><p id="form-message" class="quiet" role="status"></p></div></form></section>`;
+  ])}</div></section><section class="settings-section"><div class="settings-section-header"><h2>Alerts</h2><p>Play a short tone when the connection state changes. Use Test to verify sound output.</p></div><div class="switch-field-grid">${renderSwitchField("soundOnline", "Online sound", s.soundOnline, "When the connection returns.", "online")}${renderSwitchField("soundOffline", "Offline sound", s.soundOffline, "When a probe fails.", "offline")}</div></section><div class="settings-actions"><button class="settings-save" type="submit">Save settings</button><p id="form-message" class="quiet" role="status"></p></div></form></section>`;
 }
 
 async function render(): Promise<void> {
@@ -181,6 +185,28 @@ async function render(): Promise<void> {
   document.querySelector("#probe")?.addEventListener("click", async () => {
     await browser.runtime.sendMessage({ type: "probeNow" } as RuntimeRequest);
     await render();
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-sound-test]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const sound = button.dataset.soundTest as AlertSound;
+      const message = document.querySelector<HTMLElement>("#form-message");
+      button.disabled = true;
+      button.textContent = "Playing…";
+      try {
+        const played = await browser.runtime.sendMessage({
+          type: "testSound",
+          sound
+        } as RuntimeRequest);
+        if (message) {
+          message.textContent = played
+            ? `${sound === "online" ? "Online" : "Offline"} sound played.`
+            : "Firefox blocked audio playback. Try the Test button again after interacting with the page.";
+        }
+      } finally {
+        button.disabled = false;
+        button.textContent = "Test";
+      }
+    });
   });
   document.querySelector("#clear")?.addEventListener("click", async () => {
     if (confirm("Delete all connection history?")) {

@@ -36,6 +36,9 @@ browser.runtime.onMessage.addListener(async (request: RuntimeRequest) => {
     setToolbarUpdatesPaused(false);
     return;
   }
+  if (request.type === "testSound") {
+    return playAlertSound(request.sound === "offline" ? "offline" : "online");
+  }
 
   const activeMonitor = await getMonitor();
 

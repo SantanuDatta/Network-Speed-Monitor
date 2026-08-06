@@ -2,6 +2,7 @@ declare const browser: any;
 
 type ConnectionStatus = "online" | "connection_issue" | "offline" | "no_data";
 type Theme = "system" | "light" | "dark";
+type AlertSound = "online" | "offline";
 
 interface Settings {
   enabled: boolean;
@@ -69,7 +70,9 @@ interface RuntimeRequest {
     | "exportCsv"
     | "exportPdf"
     | "probeNow"
+    | "testSound"
     | "popupOpened"
     | "popupClosed";
   settings?: Settings;
+  sound?: AlertSound;
 }
