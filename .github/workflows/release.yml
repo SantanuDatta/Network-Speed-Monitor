@@ -68,7 +68,9 @@ jobs:
 
       - name: Read release version
         id: release
-        run: echo "version=$(node --print \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(node --print "require('./package.json').version")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Commit and tag release
         env:
