@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment to apply
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Ensure the workflow runs from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Run this workflow from the main branch."
+          exit 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Bump package version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: npm version "$BUMP" --no-git-tag-version
+
+      - name: Synchronize extension metadata
+        run: npm run version:sync
+
+      - name: Format generated changes
+        run: npm run format
+
+      - name: Run checks
+        run: |
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Validate extension package
+        run: npm run lint:web-ext
+
+      - name: Read release version
+        id: release
+        run: echo "version=$(node --print \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag release
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json manifest.json src/popup.ts
+          git commit -m "chore(release): v${VERSION}"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin HEAD:main
+          git push origin "v${VERSION}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: gh release create "v${VERSION}" --verify-tag --title "v${VERSION}" --generate-notes

@@ -1,4 +1,4 @@
-const POPUP_VERSION = "1.0.2";
+const POPUP_VERSION = "1.0.3";
 let popupRefreshTimer: number | undefined;
 let renderedSettingsKey: string | undefined;
 let renderedEndpointPermission: boolean | undefined;
@@ -113,6 +113,10 @@ function getConnectionTone(snapshot: ExtensionSnapshot): string {
   return "metric-danger";
 }
 
+function getOnlineDuration(runtime: RuntimeState): string {
+  return runtime.status === "online" ? formatDuration(Date.now() - runtime.statusSince) : "—";
+}
+
 function renderDataRow(
   label: string,
   value: string,
@@ -173,8 +177,8 @@ function renderPopup(snapshot: ExtensionSnapshot, hasEndpointPermission: boolean
 
       <section class="ui-card data-card" aria-label="Current connection details">
         ${renderDataRow("Public IP", runtime.publicIp ?? "Checking…", "Your public IP address. Click to copy to clipboard.", runtime.status === "online" ? "metric-info" : connectionTone, Boolean(runtime.publicIp))}
-        ${renderDataRow("Latency", latency, `Latency is measured against ${endpointHost}. It is shown in milliseconds; it is 1/1000 of a second.\n\nLatency is not ICMP ping, so it can be a little higher because of this measurement method.\n\nTurns green if less than 200 ms.`, getLatencyTone(runtime.latencyMs))}
-        ${renderDataRow("Online for", formatDuration(Date.now() - runtime.statusSince), "The period of the current online status.", connectionTone)}
+        ${renderDataRow("Latency", latency, `Response time is measured against ${endpointHost} over HTTPS. It is shown in milliseconds; it is 1/1000 of a second.\n\nHigher values can indicate a slower connection or a busy route.\n\nTurns green if less than 200 ms.`, getLatencyTone(runtime.latencyMs))}
+        ${renderDataRow("Online for", getOnlineDuration(runtime), "The period since the connection was last confirmed online. Monitoring gaps are not counted as disconnects.", connectionTone)}
       </section>
 
       <section class="ui-card summary-card ${settings.precision === 7 ? "precision-expert" : ""}" aria-label="Today's connection summary for this device">
@@ -266,7 +270,7 @@ function updatePopupLive(snapshot: ExtensionSnapshot, hasEndpointPermission: boo
   const latency = runtime.latencyMs === null ? "Measuring…" : `${runtime.latencyMs} ms`;
   return [
     updateMetric("latency", latency, getLatencyTone(runtime.latencyMs)),
-    updateMetric("online-for", formatDuration(Date.now() - runtime.statusSince), connectionTone),
+    updateMetric("online-for", getOnlineDuration(runtime), connectionTone),
     updateMetric(
       "disconnects",
       String(stats.today.disconnects),

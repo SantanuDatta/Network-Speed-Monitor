@@ -43,14 +43,23 @@ function transition(
   ip: string | null,
   reason?: string
 ): boolean {
+  const previousStatus = runtime.status;
+  const openSegment = segments.find((segment) => segment.endedAt === null);
   const changed = runtime.status !== status;
   if (changed) {
-    const open = segments.find((segment) => segment.endedAt === null);
-    if (open) open.endedAt = at;
+    const preserveOnlineSince =
+      (status === "no_data" &&
+        previousStatus === "online" &&
+        reason === "Monitoring was unavailable") ||
+      (status === "online" &&
+        previousStatus === "no_data" &&
+        openSegment?.reason === "Monitoring was unavailable");
+
+    if (openSegment) openSegment.endedAt = at;
     segments.push({ id: makeId(), status, startedAt: at, endedAt: null, latencyMs, ip, reason });
     if (segments.length > MAX_SEGMENTS) segments.splice(0, segments.length - MAX_SEGMENTS);
     runtime.status = status;
-    runtime.statusSince = at;
+    if (!preserveOnlineSince) runtime.statusSince = at;
   }
   runtime.latencyMs = latencyMs;
   runtime.lastProbeAt = at;
@@ -58,6 +67,22 @@ function transition(
   if (ip) runtime.publicIp = ip;
   appendSample(runtime, { at, status, latencyMs });
   return changed;
+}
+
+function resetLog(segments: StatusSegment[], runtime: RuntimeState, at = Date.now()): void {
+  segments.length = 0;
+  runtime.statusSince = at;
+
+  if (runtime.status !== "no_data") {
+    segments.push({
+      id: makeId(),
+      status: runtime.status,
+      startedAt: at,
+      endedAt: null,
+      latencyMs: runtime.latencyMs,
+      ip: runtime.publicIp
+    });
+  }
 }
 
 function intervalBounds(key: "today" | "week" | "month" | "all", now: number): [number, number] {

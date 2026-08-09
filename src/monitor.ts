@@ -24,6 +24,8 @@ class ConnectionMonitor {
   private runtime = defaultRuntime();
   private timer: number | undefined;
   private isProbing = false;
+  private probeGeneration = 0;
+  private activeProbeController: AbortController | undefined;
   private lastIpFetchAt = 0;
 
   async initialize(): Promise<void> {
@@ -56,6 +58,8 @@ class ConnectionMonitor {
   }
 
   async updateSettings(settings: Settings): Promise<void> {
+    this.probeGeneration++;
+    this.cancelActiveProbe();
     const endpoint = new URL(settings.endpoint);
     const origin = getHttpsOriginPattern(endpoint);
 
@@ -85,7 +89,9 @@ class ConnectionMonitor {
   }
 
   async clearLog(): Promise<void> {
-    this.data.segments = [];
+    this.probeGeneration++;
+    this.cancelActiveProbe();
+    resetLog(this.data.segments, this.runtime);
     await this.persist();
   }
 
@@ -137,6 +143,7 @@ class ConnectionMonitor {
   }
 
   private stopMonitoring(): void {
+    this.cancelActiveProbe();
     if (this.timer !== undefined) {
       window.clearInterval(this.timer);
       this.timer = undefined;
@@ -149,12 +156,20 @@ class ConnectionMonitor {
     }
 
     this.isProbing = true;
+    const generation = this.probeGeneration;
+    const controller = new AbortController();
+    this.activeProbeController = controller;
     const at = Date.now();
 
     try {
-      if (this.recordMissedHeartbeat(at)) await this.persist();
-      const result = await this.runConnectivityProbe(at);
-      const publicIp = result.status === "online" ? await this.fetchPublicIp(at) : null;
+      if (this.recordMissedHeartbeat(at)) {
+        await this.persist();
+        if (generation !== this.probeGeneration || !this.data.settings.enabled) return;
+      }
+      const result = await this.runConnectivityProbe(at, controller);
+      const publicIp =
+        result.status === "online" ? await this.fetchPublicIp(at, controller.signal) : null;
+      if (generation !== this.probeGeneration || !this.data.settings.enabled) return;
       const changed = transition(
         this.data.segments,
         this.runtime,
@@ -171,15 +186,23 @@ class ConnectionMonitor {
         this.notifyStatusTransition(result.status);
       }
     } finally {
+      if (this.activeProbeController === controller) this.activeProbeController = undefined;
       this.isProbing = false;
     }
   }
 
-  private async runConnectivityProbe(at: number): Promise<ProbeResult> {
+  private async runConnectivityProbe(
+    at: number,
+    controller: AbortController
+  ): Promise<ProbeResult> {
     try {
       const endpoint = new URL(this.data.settings.endpoint);
       const origin = getHttpsOriginPattern(endpoint);
       const hasPermission = await browser.permissions.contains({ origins: [origin] });
+
+      if (controller.signal.aborted) {
+        return { status: "no_data", latencyMs: null, reason: "Probe cancelled" };
+      }
 
       if (!hasPermission) {
         return {
@@ -189,7 +212,6 @@ class ConnectionMonitor {
         };
       }
 
-      const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
       const startedAt = performance.now();
 
@@ -215,7 +237,7 @@ class ConnectionMonitor {
     }
   }
 
-  private async fetchPublicIp(at: number): Promise<string | null> {
+  private async fetchPublicIp(at: number, signal: AbortSignal): Promise<string | null> {
     if (at - this.lastIpFetchAt < IP_REFRESH_INTERVAL_MS) {
       return null;
     }
@@ -228,7 +250,10 @@ class ConnectionMonitor {
         return null;
       }
 
-      const response = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
+      const response = await fetch("https://api.ipify.org?format=json", {
+        cache: "no-store",
+        signal
+      });
       const payload = (await response.json()) as { ip?: unknown };
       return typeof payload.ip === "string" ? payload.ip : null;
     } catch {
@@ -240,6 +265,11 @@ class ConnectionMonitor {
     const { samples, ...savedRuntime } = this.runtime;
     this.data.runtime = savedRuntime;
     await saveStored(this.data);
+  }
+
+  private cancelActiveProbe(): void {
+    this.activeProbeController?.abort();
+    this.activeProbeController = undefined;
   }
 
   private notifyStatusTransition(status: ConnectionStatus): void {

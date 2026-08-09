@@ -32,4 +32,3 @@ The release also corrects the visual alignment of the Mozilla listing icons whil
 ## Verification
 
 Run the existing formatting, TypeScript, test, and build checks. Then run `web-ext lint` against `dist/`, inspect the manifest to confirm there is no `gecko_android` key, verify both listing PNG dimensions, and validate the generated ZIP/XPI archives with `unzip -t`.
-

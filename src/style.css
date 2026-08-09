@@ -1559,7 +1559,7 @@ th {
   margin: 0;
 }
 
-/* Keep settings controls usable on narrow Firefox and Android viewports. */
+/* Keep settings controls usable in narrow Firefox windows. */
 @media (max-width: 720px) {
   .dashboard-nav {
     display: flex;

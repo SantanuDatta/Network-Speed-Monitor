@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "__MSG_extensionName__",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
   "icons": {
@@ -11,7 +11,15 @@
   "permissions": ["storage", "https://www.google.com/*", "https://api.ipify.org/*"],
   "optional_permissions": ["https://*/*"],
   "background": {
-    "scripts": ["types.js", "format.js", "model.js", "storage.js", "monitor.js", "background.js"],
+    "scripts": [
+      "types.js",
+      "format.js",
+      "model.js",
+      "storage.js",
+      "monitor.js",
+      "export.js",
+      "background.js"
+    ],
     "persistent": true
   },
   "browser_action": {
@@ -51,9 +59,6 @@
       "data_collection_permissions": {
         "required": ["none"]
       },
-      "strict_min_version": "152.0"
-    },
-    "gecko_android": {
       "strict_min_version": "152.0"
     }
   }

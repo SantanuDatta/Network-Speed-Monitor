@@ -1,6 +1,6 @@
 # Network Speed Monitor for Firefox
 
-A Firefox extension for desktop and Android that checks Internet connectivity and records outages, latency, availability, public IP changes, and no-data gaps caused by sleep, shutdown, or paused monitoring.
+A desktop Firefox extension that checks Internet connectivity and records outages, latency, availability, public IP changes, and no-data gaps caused by sleep, shutdown, or paused monitoring.
 
 Repository: <https://github.com/SantanuDatta/Network-Speed-Monitor>
 
@@ -14,7 +14,7 @@ Repository: <https://github.com/SantanuDatta/Network-Speed-Monitor>
 
 ## Development
 
-Requirements: Node.js 20+ and Firefox 152+ for desktop or Android.
+Requirements: Node.js 20+ and Firefox 152+ for desktop.
 
 ```sh
 npm install
@@ -24,15 +24,15 @@ npm run build-for-amo
 npm run package
 ```
 
+`npm run lint` runs the TypeScript compiler and Oxlint. `npm test` runs the Vitest suite, `npm run format:check` verifies Prettier formatting, and `npm run check` runs formatting, linting, tests, and a production build together. `npm run lint:web-ext` validates the built extension with web-ext.
+
 The distributable archive is created in `web-ext-artifacts/`. For day-to-day testing, run `npm run dev`; it builds the extension and opens Firefox's **This Firefox** developer page. Choose **Load Temporary Add-on** once and select `dist/manifest.json`. Firefox keeps that temporary add-on running in your normal browser session; use **Reload** on the same page after later builds.
+
+To create a versioned GitHub release without a binary attachment, open **Actions → Release → Run workflow** and choose `patch`, `minor`, or `major`. The workflow synchronizes the package, manifest, and popup versions, runs the full validation suite, commits the version bump, creates a tag, and generates release notes.
 
 For AMO source-code review, submit this repository as the source package. It contains the TypeScript source, `package-lock.json`, and the `build-for-amo` script that reproduces the Firefox build in `dist/`.
 
 The bundled Google probe and public-IP service are declared in the manifest. Selecting a custom probe URL requests optional access to that host when you save or start monitoring with it.
-
-## Firefox for Android
-
-The manifest explicitly supports Firefox for Android and the dashboard adapts to narrow screens. Install the signed add-on from AMO or Firefox for Android's Add-ons Manager. Android may suspend Firefox while it is backgrounded; these periods are recorded as **No data**, not as a disconnect or downtime.
 
 ## Publishing
 

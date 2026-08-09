@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "error"
+  },
+  "env": {
+    "builtin": true,
+    "browser": true,
+    "node": true,
+    "webextensions": true
+  },
+  "ignorePatterns": ["dist/**", "web-ext-artifacts/**", "node_modules/**"],
+  "rules": {
+    "eslint/no-unused-vars": "off"
+  }
+}
