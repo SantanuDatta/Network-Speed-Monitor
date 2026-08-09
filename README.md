@@ -28,7 +28,7 @@ npm run package
 
 The distributable archive is created in `web-ext-artifacts/`. For day-to-day testing, run `npm run dev`; it builds the extension and opens Firefox's **This Firefox** developer page. Choose **Load Temporary Add-on** once and select `dist/manifest.json`. Firefox keeps that temporary add-on running in your normal browser session; use **Reload** on the same page after later builds.
 
-To create a versioned GitHub release without a binary attachment, open **Actions → Release → Run workflow** and choose `patch`, `minor`, or `major`. The workflow synchronizes the package, manifest, and popup versions, runs the full validation suite, commits the version bump, creates a tag, and generates release notes.
+To create a versioned GitHub release without a binary attachment, open **Actions → Release → Run workflow** and choose `none` to release the version already in the repository, or `patch`, `minor`, or `major` to bump it first. The workflow synchronizes the package, manifest, and popup versions, runs the full validation suite, commits any version bump, creates a tag, and generates release notes.
 
 For AMO source-code review, submit this repository as the source package. It contains the TypeScript source, `package-lock.json`, and the `build-for-amo` script that reproduces the Firefox build in `dist/`.
 
