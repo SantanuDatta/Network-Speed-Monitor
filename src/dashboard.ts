@@ -252,7 +252,7 @@ async function render(): Promise<void> {
         if (url.protocol !== "https:") {
           throw new Error("The probe URL must use HTTPS.");
         }
-        const origin = `${url.protocol}//${url.host}/*`;
+        const origin = `${url.protocol}//${url.hostname}/*`;
         const hasPermission = await browser.permissions.contains({ origins: [origin] });
         if (settings.enabled && !hasPermission) {
           const granted = await browser.permissions.request({ origins: [origin] });

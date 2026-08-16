@@ -1,4 +1,4 @@
-const POPUP_VERSION = "1.0.4";
+const POPUP_VERSION = "1.0.5";
 let popupRefreshTimer: number | undefined;
 let renderedSettingsKey: string | undefined;
 let renderedEndpointPermission: boolean | undefined;
@@ -54,7 +54,7 @@ function setPopupMarkup(container: HTMLElement, markup: string): void {
 
 function getEndpointOrigin(endpoint: string): string {
   const url = new URL(endpoint);
-  return `${url.protocol}//${url.host}/*`;
+  return `${url.protocol}//${url.hostname}/*`;
 }
 
 function formatAvailability(value: number | null, precision: Settings["precision"]): string {

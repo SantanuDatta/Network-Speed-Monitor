@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Format with Prettier
+      - name: Format with Oxfmt
         run: npm run format
 
       - name: Type-check and run Oxlint

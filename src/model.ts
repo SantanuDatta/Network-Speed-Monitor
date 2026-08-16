@@ -44,7 +44,9 @@ function transition(
   reason?: string
 ): boolean {
   const previousStatus = runtime.status;
-  const openSegment = segments.find((segment) => segment.endedAt === null);
+  const openSegmentIndex = segments.findIndex((segment) => segment.endedAt === null);
+  const openSegment = openSegmentIndex === -1 ? undefined : segments[openSegmentIndex];
+  const segmentBeforeOpen = openSegmentIndex > 0 ? segments[openSegmentIndex - 1] : undefined;
   const changed = runtime.status !== status;
   if (changed) {
     const preserveOnlineSince =
@@ -53,7 +55,8 @@ function transition(
         reason === "Monitoring was unavailable") ||
       (status === "online" &&
         previousStatus === "no_data" &&
-        openSegment?.reason === "Monitoring was unavailable");
+        openSegment?.reason === "Monitoring was unavailable" &&
+        segmentBeforeOpen?.status === "online");
 
     if (openSegment) openSegment.endedAt = at;
     segments.push({ id: makeId(), status, startedAt: at, endedAt: null, latencyMs, ip, reason });

@@ -68,6 +68,20 @@ test("clearing the log starts a fresh segment for the current status", async () 
   expect(runtime.statusSince).toBe(3_000);
 });
 
+test("does not carry online duration through an unavailable gap after an outage", async () => {
+  const context = await loadScripts(["src/types.ts", "src/model.ts"]);
+  const { defaultRuntime, transition } = getModel(context);
+  const runtime = defaultRuntime(1_000);
+  const segments = [];
+
+  transition(segments, runtime, "online", 2_000, 42, "203.0.113.10");
+  transition(segments, runtime, "offline", 3_000, null, null, "Probe failed");
+  transition(segments, runtime, "no_data", 6_000, null, null, "Monitoring was unavailable");
+  transition(segments, runtime, "online", 10_000, 45, "203.0.113.10");
+
+  expect(runtime.statusSince).toBe(10_000);
+});
+
 test("disabling monitoring aborts in-flight probes and cannot restore old status", async () => {
   let resolveProbe;
   let probeStarted = false;

@@ -1,4 +1,5 @@
 const PROBE_TIMEOUT_MS = 8_000;
+const IP_PROBE_TIMEOUT_MS = 8_000;
 const IP_REFRESH_INTERVAL_MS = 5 * 60_000;
 const MISSED_HEARTBEAT_MULTIPLIER = 3;
 const IPIFY_ORIGIN = "https://api.ipify.org/*";
@@ -250,12 +251,22 @@ class ConnectionMonitor {
         return null;
       }
 
-      const response = await fetch("https://api.ipify.org?format=json", {
-        cache: "no-store",
-        signal
-      });
-      const payload = (await response.json()) as { ip?: unknown };
-      return typeof payload.ip === "string" ? payload.ip : null;
+      const ipController = new AbortController();
+      const abortIpProbe = () => ipController.abort();
+      const timeout = window.setTimeout(() => ipController.abort(), IP_PROBE_TIMEOUT_MS);
+      signal.addEventListener("abort", abortIpProbe, { once: true });
+
+      try {
+        const response = await fetch("https://api.ipify.org?format=json", {
+          cache: "no-store",
+          signal: ipController.signal
+        });
+        const payload = (await response.json()) as { ip?: unknown };
+        return typeof payload.ip === "string" ? payload.ip : null;
+      } finally {
+        window.clearTimeout(timeout);
+        signal.removeEventListener("abort", abortIpProbe);
+      }
     } catch {
       return null;
     }
@@ -290,7 +301,7 @@ function getHttpsOriginPattern(endpoint: URL): string {
     throw new Error("Only HTTPS probe URLs are allowed.");
   }
 
-  return `${endpoint.protocol}//${endpoint.host}/*`;
+  return `${endpoint.protocol}//${endpoint.hostname}/*`;
 }
 
 function withCacheBuster(endpoint: URL, timestamp: number): string {
@@ -383,8 +394,7 @@ function setToolbarUpdatesPaused(paused: boolean): void {
 
 function getToolbarBadge(runtime: RuntimeState): string {
   if (runtime.status === "online" && runtime.latencyMs !== null) {
-    if (runtime.latencyMs < 10) return `${runtime.latencyMs}ms`;
-    if (runtime.latencyMs < 1_000) return String(runtime.latencyMs);
+    if (runtime.latencyMs < 1_000) return `${runtime.latencyMs}ms`;
     return `${Math.round(runtime.latencyMs / 1_000)}s`;
   }
 

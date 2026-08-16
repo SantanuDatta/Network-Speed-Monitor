@@ -1,4 +1,7 @@
-dist/
+.git/
 node_modules/
+dist/
 web-ext-artifacts/
+.web-ext-profile/
+npm-debug.log*
 package-lock.json
