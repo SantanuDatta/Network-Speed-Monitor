@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "__MSG_extensionName__",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
   "icons": {
@@ -25,26 +25,12 @@
   "browser_action": {
     "default_area": "navbar",
     "default_title": "Network Speed Monitor",
-    "default_icon": {
-      "16": "assets/icons/toolbar-white-16.png",
-      "32": "assets/icons/toolbar-white-32.png",
-      "48": "assets/icons/toolbar-white-48.png"
-    },
+    "default_icon": "assets/icons/toolbar-white.svg",
     "theme_icons": [
       {
-        "light": "assets/icons/toolbar-white-16.png",
-        "dark": "assets/icons/toolbar-black-16.png",
+        "light": "assets/icons/toolbar-white.svg",
+        "dark": "assets/icons/toolbar-black.svg",
         "size": 16
-      },
-      {
-        "light": "assets/icons/toolbar-white-32.png",
-        "dark": "assets/icons/toolbar-black-32.png",
-        "size": 32
-      },
-      {
-        "light": "assets/icons/toolbar-white-48.png",
-        "dark": "assets/icons/toolbar-black-48.png",
-        "size": 48
       }
     ],
     "default_popup": "popup.html"

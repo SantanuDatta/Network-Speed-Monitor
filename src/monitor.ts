@@ -362,7 +362,7 @@ async function updateToolbar(runtime: RuntimeState): Promise<void> {
     toolbarStyleInitialized = true;
   }
 
-  const title = `Network Speed Monitor · ${statusLabel(runtime.status)}`;
+  const title = getToolbarTitle(runtime);
   const badge = getToolbarBadge(runtime);
   if (title !== lastToolbarTitle) {
     await browser.browserAction.setTitle({ title });
@@ -394,11 +394,27 @@ function setToolbarUpdatesPaused(paused: boolean): void {
 
 function getToolbarBadge(runtime: RuntimeState): string {
   if (runtime.status === "online" && runtime.latencyMs !== null) {
-    if (runtime.latencyMs < 1_000) return `${runtime.latencyMs}ms`;
+    // Keep the badge compact so Firefox does not clip a four-character `ms`
+    // suffix over the icon. The full unit-bearing value is in the tooltip.
+    if (runtime.latencyMs < 1_000) return String(runtime.latencyMs);
     return `${Math.round(runtime.latencyMs / 1_000)}s`;
   }
 
   if (runtime.status === "connection_issue") return "!";
   if (runtime.status === "offline") return "×";
   return "";
+}
+
+function getToolbarTitle(runtime: RuntimeState): string {
+  const status = statusLabel(runtime.status);
+  if (runtime.status === "online" && runtime.latencyMs !== null) {
+    return `Network Speed Monitor · ${status} · Latency: ${formatToolbarLatency(runtime.latencyMs)}`;
+  }
+
+  return `Network Speed Monitor · ${status}`;
+}
+
+function formatToolbarLatency(latencyMs: number): string {
+  if (latencyMs < 1_000) return `${latencyMs} ms`;
+  return `${(latencyMs / 1_000).toFixed(latencyMs >= 10_000 ? 0 : 1)} s`;
 }
