@@ -27,7 +27,7 @@ async function initializeMonitor(): Promise<ConnectionMonitor> {
 browser.runtime.onInstalled.addListener(() => void getMonitor());
 browser.runtime.onStartup.addListener(() => void getMonitor());
 
-browser.runtime.onMessage.addListener(async (request: RuntimeRequest) => {
+function handleRuntimeMessage(request: RuntimeRequest): Promise<unknown> | undefined {
   if (request.type === "popupOpened") {
     setToolbarUpdatesPaused(true);
     return;
@@ -40,26 +40,28 @@ browser.runtime.onMessage.addListener(async (request: RuntimeRequest) => {
     return playAlertSound(request.sound === "offline" ? "offline" : "online");
   }
 
-  const activeMonitor = await getMonitor();
+  return getMonitor().then(async (activeMonitor) => {
+    switch (request.type) {
+      case "getSnapshot":
+        return activeMonitor.snapshot();
+      case "saveSettings":
+        if (!request.settings) throw new Error("Settings are missing.");
+        await activeMonitor.updateSettings(request.settings);
+        return activeMonitor.snapshot();
+      case "clearLog":
+        await activeMonitor.clearLog();
+        return activeMonitor.snapshot();
+      case "probeNow":
+        await activeMonitor.probeNow();
+        return activeMonitor.snapshot();
+      case "exportCsv":
+        return createCsv(activeMonitor.snapshot());
+      case "exportPdf":
+        return createPdf(activeMonitor.snapshot());
+    }
+  });
+}
 
-  switch (request.type) {
-    case "getSnapshot":
-      return activeMonitor.snapshot();
-    case "saveSettings":
-      if (!request.settings) throw new Error("Settings are missing.");
-      await activeMonitor.updateSettings(request.settings);
-      return activeMonitor.snapshot();
-    case "clearLog":
-      await activeMonitor.clearLog();
-      return activeMonitor.snapshot();
-    case "probeNow":
-      await activeMonitor.probeNow();
-      return activeMonitor.snapshot();
-    case "exportCsv":
-      return createCsv(activeMonitor.snapshot());
-    case "exportPdf":
-      return createPdf(activeMonitor.snapshot());
-  }
-});
+browser.runtime.onMessage.addListener(handleRuntimeMessage);
 
 void getMonitor();

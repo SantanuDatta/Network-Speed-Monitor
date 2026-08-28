@@ -1,4 +1,4 @@
-const POPUP_VERSION = "1.0.6";
+const POPUP_VERSION = "1.0.7";
 let popupRefreshTimer: number | undefined;
 let renderedSettingsKey: string | undefined;
 let renderedEndpointPermission: boolean | undefined;
@@ -389,7 +389,9 @@ async function loadPopup(): Promise<void> {
 }
 
 async function initializePopup(): Promise<void> {
-  await browser.runtime.sendMessage({ type: "popupOpened" } as RuntimeRequest);
+  void browser.runtime
+    .sendMessage({ type: "popupOpened" } as RuntimeRequest)
+    .catch(() => undefined);
   await loadPopup();
   startPopupLiveUpdates();
 }
