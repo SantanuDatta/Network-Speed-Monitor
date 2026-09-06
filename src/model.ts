@@ -101,6 +101,7 @@ function calculateStats(segments: StatusSegment[], from: number, to: number): Ag
   let monitoredMs = 0;
   let downtimeMs = 0;
   let disconnects = 0;
+  let previousStatus: ConnectionStatus | undefined;
   for (const segment of segments) {
     const start = Math.max(from, segment.startedAt);
     const end = Math.min(to, segment.endedAt ?? to);
@@ -109,8 +110,16 @@ function calculateStats(segments: StatusSegment[], from: number, to: number): Ag
     monitoredMs += duration;
     if (segment.status === "offline" || segment.status === "connection_issue") {
       downtimeMs += duration;
-      if (segment.startedAt >= from && segment.startedAt < to) disconnects++;
+      if (
+        previousStatus !== "offline" &&
+        previousStatus !== "connection_issue" &&
+        segment.startedAt >= from &&
+        segment.startedAt < to
+      ) {
+        disconnects++;
+      }
     }
+    previousStatus = segment.status;
   }
   return {
     disconnects,

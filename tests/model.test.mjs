@@ -82,6 +82,23 @@ test("does not carry online duration through an unavailable gap after an outage"
   expect(runtime.statusSince).toBe(10_000);
 });
 
+test("counts one disconnect across offline and connection-issue classifications", async () => {
+  const context = await loadScripts(["src/types.ts", "src/model.ts"]);
+  const { calculateStats } = getModel(context);
+  const stats = calculateStats(
+    [
+      { status: "online", startedAt: 0, endedAt: 1_000 },
+      { status: "offline", startedAt: 1_000, endedAt: 2_000 },
+      { status: "connection_issue", startedAt: 2_000, endedAt: 3_000 },
+      { status: "online", startedAt: 3_000, endedAt: 4_000 }
+    ],
+    0,
+    4_000
+  );
+
+  expect(stats.disconnects).toBe(1);
+});
+
 test("disabling monitoring aborts in-flight probes and cannot restore old status", async () => {
   let resolveProbe;
   let probeStarted = false;
@@ -172,7 +189,7 @@ test("disabling monitoring aborts in-flight probes and cannot restore old status
   } finally {
     resolveProbe({});
   }
-  await vi.waitFor(() => expect(ipFetchFinished).toBe(true));
+  expect(ipFetchFinished).toBe(false);
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   expect(monitor.snapshot().runtime.status).toBe("no_data");

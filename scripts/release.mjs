@@ -29,11 +29,16 @@ if (branch !== "main") {
   );
 }
 
+if (readCommand("git", ["status", "--porcelain"])) {
+  throw new Error("Releases require a clean working tree before versioning.");
+}
+
 run(npmCommand, ["version", versionArgument, "--no-git-tag-version"]);
 run(npmCommand, ["run", "version:sync"]);
 run(npmCommand, ["run", "format"]);
 run(npmCommand, ["run", "check"]);
 run(npmCommand, ["run", "lint:web-ext"]);
+run(npmCommand, ["run", "package"]);
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 const version = packageJson.version;
@@ -54,4 +59,6 @@ run("git", ["tag", "-a", tag, "-m", `Release ${tag}`]);
 run("git", ["push", "origin", "HEAD:main"]);
 run("git", ["push", "origin", tag]);
 
-console.log(`Released ${tag}. GitHub Actions will build and publish the archive.`);
+console.log(
+  `Released ${tag}. Archive created in web-ext-artifacts/; GitHub Actions will publish it.`
+);

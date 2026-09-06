@@ -2,6 +2,7 @@ const PROBE_TIMEOUT_MS = 8_000;
 const IP_PROBE_TIMEOUT_MS = 8_000;
 const IP_REFRESH_INTERVAL_MS = 5 * 60_000;
 const MISSED_HEARTBEAT_MULTIPLIER = 3;
+const MISSED_HEARTBEAT_GRACE_MS = PROBE_TIMEOUT_MS + IP_PROBE_TIMEOUT_MS;
 const IPIFY_ORIGIN = "https://api.ipify.org/*";
 const TOOLBAR_UPDATE_DELAY_MS = 250;
 const SOUND_GAIN = 0.07;
@@ -103,7 +104,8 @@ class ConnectionMonitor {
   private recordMissedHeartbeat(now = Date.now()): boolean {
     const lastHeartbeatAt = this.data.runtime.lastHeartbeatAt;
     const missedHeartbeatThreshold =
-      this.data.settings.intervalSeconds * 1_000 * MISSED_HEARTBEAT_MULTIPLIER;
+      this.data.settings.intervalSeconds * 1_000 * MISSED_HEARTBEAT_MULTIPLIER +
+      MISSED_HEARTBEAT_GRACE_MS;
 
     if (!lastHeartbeatAt || now - lastHeartbeatAt <= missedHeartbeatThreshold) {
       return false;
@@ -168,16 +170,17 @@ class ConnectionMonitor {
         if (generation !== this.probeGeneration || !this.data.settings.enabled) return;
       }
       const result = await this.runConnectivityProbe(at, controller);
-      const publicIp =
-        result.status === "online" ? await this.fetchPublicIp(at, controller.signal) : null;
       if (generation !== this.probeGeneration || !this.data.settings.enabled) return;
+
+      // Record connectivity as soon as the endpoint probe completes. The public-IP
+      // lookup is auxiliary and may be slow or unavailable.
       const changed = transition(
         this.data.segments,
         this.runtime,
         result.status,
         at,
         result.latencyMs,
-        publicIp,
+        this.runtime.publicIp,
         result.reason
       );
 
@@ -186,6 +189,17 @@ class ConnectionMonitor {
       if (changed) {
         this.notifyStatusTransition(result.status);
       }
+
+      if (result.status !== "online") return;
+
+      const publicIp = await this.fetchPublicIp(at, controller.signal);
+      if (generation !== this.probeGeneration || !this.data.settings.enabled || !publicIp) return;
+
+      this.runtime.publicIp = publicIp;
+      const openSegment = this.data.segments.find((segment) => segment.endedAt === null);
+      if (openSegment?.status === "online") openSegment.ip = publicIp;
+      await this.persist();
+      queueToolbarUpdate(this.runtime);
     } finally {
       if (this.activeProbeController === controller) this.activeProbeController = undefined;
       this.isProbing = false;

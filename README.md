@@ -64,7 +64,7 @@ The project is compiled from `src/` into `dist/`. The build copies the manifest,
 | `npm run lint:web-ext`     | Validate the built extension with web-ext.                                  |
 | `npm run check`            | Run formatting checks, linting, tests, and a production build.              |
 | `npm run package`          | Build and create a distributable archive in `web-ext-artifacts/`.           |
-| `npm run release -- patch` | Validate, tag, push, and publish the next patch release.                    |
+| `npm run release -- patch` | Validate, package, tag, push, and publish the next patch release.           |
 
 Before opening a pull request, run:
 
@@ -106,6 +106,9 @@ Only the selected probe and public-IP service receive the HTTPS requests needed 
 Run `npm run package` to create a distributable archive in `web-ext-artifacts/`. For normal releases, use the command below so versioning, validation, pushing, and GitHub publishing stay in one flow.
 
 To publish a release from `main`, run one command with the desired version change:
+
+Pass the version change after `--`; for example, use `npm run release -- patch`, not
+`npm run release --patch`.
 
 ```sh
 npm run release -- patch   # 1.0.4 -> 1.0.5
