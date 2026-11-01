@@ -1,4 +1,4 @@
-const POPUP_VERSION = "1.0.8";
+const POPUP_VERSION = "1.0.9";
 let popupRefreshTimer: number | undefined;
 let renderedSettingsKey: string | undefined;
 let renderedEndpointPermission: boolean | undefined;
