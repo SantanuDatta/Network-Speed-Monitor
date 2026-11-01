@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCli = process.env.npm_execpath;
 const versionArgument = process.argv[2];
 const bumpNames = new Set(["patch", "minor", "major"]);
 const explicitVersionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
@@ -22,6 +22,13 @@ function readCommand(command, args) {
   return execFileSync(command, args, { encoding: "utf8" }).trim();
 }
 
+function runNpm(args) {
+  if (!npmCli) {
+    throw new Error("Run releases through npm run release -- <patch|minor|major|X.Y.Z>.");
+  }
+  run(process.execPath, [npmCli, ...args]);
+}
+
 const branch = readCommand("git", ["branch", "--show-current"]);
 if (branch !== "main") {
   throw new Error(
@@ -33,12 +40,12 @@ if (readCommand("git", ["status", "--porcelain"])) {
   throw new Error("Releases require a clean working tree before versioning.");
 }
 
-run(npmCommand, ["version", versionArgument, "--no-git-tag-version"]);
-run(npmCommand, ["run", "version:sync"]);
-run(npmCommand, ["run", "format"]);
-run(npmCommand, ["run", "check"]);
-run(npmCommand, ["run", "lint:web-ext"]);
-run(npmCommand, ["run", "package"]);
+runNpm(["version", versionArgument, "--no-git-tag-version"]);
+runNpm(["run", "version:sync"]);
+runNpm(["run", "format"]);
+runNpm(["run", "check"]);
+runNpm(["run", "lint:web-ext"]);
+runNpm(["run", "package"]);
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 const version = packageJson.version;

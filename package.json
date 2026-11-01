@@ -19,10 +19,13 @@
     "release": "node scripts/release.mjs"
   },
   "devDependencies": {
-    "oxfmt": "^0.63.0",
-    "oxlint": "^1.77.0",
-    "typescript": "^6.0.0",
-    "vitest": "^4.1.10",
-    "web-ext": "^10.0.0"
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5",
+    "web-ext": "^10.8.0"
+  },
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   }
 }

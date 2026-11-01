@@ -23,7 +23,8 @@ The project is intentionally local-first: monitoring history and settings stay i
 ## Support
 
 - Firefox desktop 152 or newer.
-- TypeScript 6, Node.js 20 or newer, and current Firefox tooling for development.
+- TypeScript 6 and Node.js 24 LTS (recommended) for development. Supported Node.js versions are
+  22.12+ within 22.x, 24.x, and 26 or newer.
 
 This repository targets Firefox desktop.
 
