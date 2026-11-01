@@ -1,0 +1,46 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit
+
+      # web-ext currently has low/moderate transitive advisories without compatible fixes.
+      - name: Audit locked dependencies
+        shell: bash
+        run: npm audit --audit-level=high 2>&1 | tee npm-audit.txt
+
+      - name: Summarize dependency audit
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f npm-audit.txt ]]; then
+            {
+              echo '### npm dependency audit'
+              echo '```text'
+              cat npm-audit.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
