@@ -1,138 +1,89 @@
 # Network Speed Monitor
 
-[![CI](https://github.com/SantanuDatta/Network-Speed-Monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/SantanuDatta/Network-Speed-Monitor/actions/workflows/ci.yml)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+Keep track of Internet dropouts and response times from Firefox. See whether your connection is
+working, when it last went down, and how reliable it has been throughout the day.
 
-Network Speed Monitor is a Firefox extension for observing the health of an Internet connection over time. It periodically probes a configurable HTTPS endpoint, measures response latency, records connection transitions, and presents the results in a popup and dashboard.
+Network Speed Monitor measures connection availability and HTTPS response latency in milliseconds.
+It does not measure download or upload speed in Mbps.
 
-The project is intentionally local-first: monitoring history and settings stay in Firefox, and the extension does not inspect visited pages or require an account.
+## What you can do
 
-## Features
-
-- Configurable connectivity checks at 1, 2, 3, or 5-second intervals.
-- Online, connection-issue, offline, and no-data states.
-- Response latency and public IP display.
-- Real-time latency view with recent probes.
-- Connection log with CSV and PDF report export.
-- Daily, weekly, monthly, and all-time availability statistics.
-- Independent severity indicators for latency, disconnects, availability, and downtime.
-- Optional sounds when the connection comes back or a probe fails.
-- Start/stop monitoring and manual probe controls.
-- Light and dark toolbar icon variants for Firefox themes.
-
-## Support
-
-- Firefox desktop 152 or newer.
-- TypeScript 6 and Node.js 24 LTS (recommended) for development. Supported Node.js versions are
-  22.12+ within 22.x, 24.x, and 26 or newer.
-
-This repository targets Firefox desktop.
+- Check your current connection status, response time, and public IP from the toolbar.
+- Watch recent response times in the realtime monitor.
+- See when your connection dropped and how long each interruption lasted.
+- Review availability, disconnects, and downtime for today, this week, this month, or all recorded time.
+- Export the connection log as CSV or a PDF report.
+- Get sound alerts when a check fails or your connection comes back.
+- Choose how often to check your connection: every 1, 2, 3, or 5 seconds.
+- Use a light, dark, or system theme.
 
 ## Install
 
-### From a release
+Requires **Firefox 152 or newer on desktop**.
 
-Download the latest release archive from the repository's [Releases](https://github.com/SantanuDatta/Network-Speed-Monitor/releases) page. Signed AMO releases can be installed normally through Firefox. A locally built archive is intended for AMO submission or temporary development installation.
+The [GitHub releases](https://github.com/SantanuDatta/Network-Speed-Monitor/releases) include an
+extension ZIP. To try it in Firefox:
 
-### Temporary installation during development
+1. Download the extension ZIP from a release and extract it into a folder.
+2. Open `about:debugging#/runtime/this-firefox` in Firefox.
+3. Click **Load Temporary Add-on** and select `manifest.json` inside that folder.
+4. Open Network Speed Monitor from Firefox's extensions menu. Pin it to the toolbar for easy access.
 
-1. Install the development dependencies with `npm install`.
-2. Run `npm run dev`.
-3. In Firefox, open `about:debugging#/runtime/this-firefox` if it is not opened automatically.
-4. Select **Load Temporary Add-on** and choose `dist/manifest.json`.
+This installation lasts until Firefox closes. The GitHub ZIP is unsigned; Firefox requires a signed
+add-on for permanent installation.
 
-After making changes, run `npm run build` and use **Reload** for the temporary add-on. Temporary add-ons are removed when Firefox closes.
+## Start monitoring
 
-## Development
+Monitoring starts automatically. Click the toolbar icon to see your connection status and recent
+statistics. Use the refresh button to run a check immediately, or the power button to pause and
+resume monitoring.
 
-```sh
-npm install
-npm run dev
-```
+Open **Realtime monitor** to watch response times, **Connection log** to review interruptions and
+export reports, or **Statistics** to review availability over time.
 
-The project is compiled from `src/` into `dist/`. The build copies the manifest, HTML, CSS, locale files, and assets into the distribution directory.
+In **Settings**, you can change the testing interval, sounds, theme, and **HTTPS ping URL**. Click
+**Save settings** after making changes. If you choose a different URL, Firefox asks for permission to
+contact that host. If the popup asks you to allow connectivity checks, click **Allow** to grant access.
 
-### Useful commands
+## Understanding the results
 
-| Command                    | Purpose                                                                     |
-| -------------------------- | --------------------------------------------------------------------------- |
-| `npm run dev`              | Build and launch Firefox with the extension available in `about:debugging`. |
-| `npm run build`            | Compile TypeScript and create `dist/`.                                      |
-| `npm run build-for-amo`    | Create the reproducible AMO build in `dist/`.                               |
-| `npm run format`           | Format the repository with Oxfmt.                                           |
-| `npm run lint`             | Type-check the project and run Oxlint.                                      |
-| `npm test`                 | Run the Vitest test suite.                                                  |
-| `npm run lint:web-ext`     | Validate the built extension with web-ext.                                  |
-| `npm run check`            | Run formatting checks, linting, tests, and a production build.              |
-| `npm run package`          | Build and create a distributable archive in `web-ext-artifacts/`.           |
-| `npm run release -- patch` | Validate, package, tag, push, and publish the next patch release.           |
+| Status                 | Meaning                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------- |
+| Online                 | The selected HTTPS endpoint responded to the latest check.                                    |
+| Connection issues      | The check failed, but Firefox still reports a network connection.                             |
+| No Internet connection | The check failed and Firefox reports that you are offline.                                    |
+| No data                | No measurement is available, for example while monitoring is paused or permission is missing. |
 
-Before opening a pull request, run:
+Lower response times mean the selected endpoint responded faster. A failed check can come from your
+connection or the endpoint itself; it does not identify the cause of an outage.
 
-```sh
-npm run format
-npm run lint
-npm test
-npm run build
-npm run lint:web-ext
-```
+Keep Firefox running to collect measurements. Time when monitoring cannot run, such as while Firefox
+is closed or your computer is asleep, is treated as a monitoring gap rather than a confirmed outage.
+No-data periods are excluded from availability calculations.
 
-GitHub Actions runs the same quality gates for pushes and pull requests. Oxfmt, Oxlint, and Vitest are used alongside TypeScript; no generated or minified source is required for local development.
+## Privacy
 
-## Project layout
+No account is needed. There are no ads, analytics, or telemetry, and the extension does not read your
+browsing history or page contents. Settings and monitoring history stay in Firefox.
 
-```text
-src/
-  background.ts   Extension message handling and monitor lifecycle
-  monitor.ts      HTTPS probes, latency, status transitions, and sounds
-  model.ts        Runtime state and statistics calculations
-  storage.ts      Firefox local-storage persistence
-  popup.ts        Toolbar popup UI
-  dashboard.ts    Realtime, log, statistics, and settings pages
-  export.ts       CSV and PDF report generation
-tests/            Vitest tests
-assets/           Toolbar, listing, and interface icons
-_locales/         Firefox localization messages
-scripts/          Build, version synchronization, and release helpers
-```
+Connection checks contact Google by default, and public IP lookups contact ipify. If you set a custom
+HTTPS ping URL, checks contact that host instead. These services receive your public IP and the
+ordinary metadata sent with an HTTPS request. Monitoring history is not sent to the developer.
 
-## Permissions and privacy
+See the [privacy policy](PRIVACY.md) for details. Exported reports may contain your public IP address;
+review them before sharing.
 
-The extension requests `storage`, access to the default Google probe, and access to `api.ipify.org` for the public IP display. Choosing a custom HTTPS probe asks Firefox for optional permission to contact that host.
+## Help and feedback
 
-Only the selected probe and public-IP service receive the HTTPS requests needed for their measurements. Monitoring history, settings, and reports are stored locally in Firefox and are not sent to the developer. The complete policy is available in [PRIVACY.md](PRIVACY.md).
+If monitoring shows **No data**, check that monitoring is enabled and any requested host permission
+has been granted. If checks keep failing, confirm that your HTTPS ping URL is reachable.
 
-## Publishing
+[Report a problem or request a feature](https://github.com/SantanuDatta/Network-Speed-Monitor/issues).
+For bug reports, include your Firefox version, extension version, and steps to reproduce the problem.
+Remove public IP addresses and other private information from screenshots or reports before posting.
 
-Run `npm run package` to create a distributable archive in `web-ext-artifacts/`. For normal releases, use the command below so versioning, validation, pushing, and GitHub publishing stay in one flow.
-
-To publish a release from `main`, run one command with the desired version change:
-
-Pass the version change after `--`; for example, use `npm run release -- patch`, not
-`npm run release --patch`.
-
-```sh
-npm run release -- patch   # 1.0.4 -> 1.0.5
-npm run release -- minor   # 1.0.5 -> 1.1.0
-npm run release -- major   # 1.1.0 -> 2.0.0
-npm run release -- 1.2.0   # set an exact version
-```
-
-The command synchronizes the manifest and popup version, formats and validates the project, commits the release, creates the `vX.Y.Z` tag, and pushes both the commit and tag. Pushing the tag starts the GitHub Actions release workflow, which rebuilds the extension, validates it with `web-ext`, and attaches the archive to a generated GitHub release.
-
-For AMO source-code review, submit the repository source archive rather than `dist/` alone. It includes the TypeScript source, lockfile, build script, tests, and configuration needed to reproduce the extension. Reviewers can reproduce the build with `npm ci && npm run build-for-amo`.
-
-## Contributing
-
-Issues and pull requests are welcome. Please include:
-
-- the Firefox version and operating system;
-- the extension version or commit being tested;
-- steps to reproduce the issue;
-- relevant console output or screenshots with private data removed.
-
-Keep changes focused, preserve the Firefox-only scope, add or update tests when behavior changes, and run the validation commands above before submitting a pull request.
+For building and contributing, see the [development guide](DEVELOPMENT.md).
 
 ## License
 
-Network Speed Monitor is licensed under the [GNU General Public License v3.0](LICENSE).
+[GNU General Public License v3.0](LICENSE).
