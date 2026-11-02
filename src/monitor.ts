@@ -10,6 +10,7 @@ const SOUND_DURATION_SECONDS = 0.16;
 let toolbarStyleInitialized = false;
 let lastToolbarTitle: string | undefined;
 let lastToolbarBadge: string | undefined;
+let lastToolbarBadgeColor: string | undefined;
 let toolbarUpdatesPaused = false;
 let pendingToolbarRuntime: RuntimeState | undefined;
 let toolbarUpdateTimer: number | undefined;
@@ -40,22 +41,26 @@ class ConnectionMonitor {
     this.restartMonitoring();
   }
 
-  snapshot(): ExtensionSnapshot {
+  // The open segment keeps endedAt: null so views can tell it is still running.
+  // `segmentsSince` limits the history sent to views that only need recent data, and
+  // `includeStats` skips the four full-history scans for views that don't show them.
+  snapshot(segmentsSince = 0, includeStats = true): ExtensionSnapshot {
     const now = Date.now();
 
     return {
       settings: { ...this.data.settings },
-      segments: this.data.segments.map((segment) => ({
-        ...segment,
-        endedAt: segment.endedAt ?? now
-      })),
+      segments: this.data.segments
+        .filter((segment) => (segment.endedAt ?? now) >= segmentsSince)
+        .map((segment) => ({ ...segment })),
       runtime: { ...this.runtime, samples: [...this.runtime.samples] },
-      stats: {
-        today: calculateStats(this.data.segments, ...intervalBounds("today", now)),
-        week: calculateStats(this.data.segments, ...intervalBounds("week", now)),
-        month: calculateStats(this.data.segments, ...intervalBounds("month", now)),
-        all: calculateStats(this.data.segments, ...intervalBounds("all", now))
-      }
+      stats: includeStats
+        ? {
+            today: calculateStats(this.data.segments, ...intervalBounds("today", now)),
+            week: calculateStats(this.data.segments, ...intervalBounds("week", now)),
+            month: calculateStats(this.data.segments, ...intervalBounds("month", now)),
+            all: calculateStats(this.data.segments, ...intervalBounds("all", now))
+          }
+        : undefined
     };
   }
 
@@ -367,13 +372,26 @@ async function playAlertSound(sound: AlertSound): Promise<boolean> {
   }
 }
 
+// Mid-tone badge colours stay visible on both light and dark Firefox toolbars,
+// and white text keeps above 4.5:1 contrast on each.
+function getToolbarBadgeColor(runtime: RuntimeState): string {
+  if (runtime.status === "offline") return "#c23434";
+  if (runtime.status === "connection_issue") return "#b0650a";
+  return "#475569";
+}
+
 async function updateToolbar(runtime: RuntimeState): Promise<void> {
   if (!toolbarStyleInitialized) {
-    await browser.browserAction.setBadgeBackgroundColor({ color: "#18181b" });
     if (browser.browserAction.setBadgeTextColor) {
       await browser.browserAction.setBadgeTextColor({ color: "#ffffff" });
     }
     toolbarStyleInitialized = true;
+  }
+
+  const badgeColor = getToolbarBadgeColor(runtime);
+  if (badgeColor !== lastToolbarBadgeColor) {
+    await browser.browserAction.setBadgeBackgroundColor({ color: badgeColor });
+    lastToolbarBadgeColor = badgeColor;
   }
 
   const title = getToolbarTitle(runtime);

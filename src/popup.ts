@@ -1,45 +1,18 @@
 const POPUP_VERSION = "1.0.9";
+const SPARKLINE_SAMPLES = 60;
+const SPARKLINE_WIDTH = 300;
+const SPARKLINE_HEIGHT = 58;
+const SPARKLINE_THRESHOLD_MS = 200;
+const DAY_MS = 24 * 60 * 60_000;
+
 let popupRefreshTimer: number | undefined;
 let renderedSettingsKey: string | undefined;
 let renderedEndpointPermission: boolean | undefined;
-
-type IconName =
-  | "arrow-path"
-  | "chart-bar"
-  | "chart-pie"
-  | "check-circle"
-  | "chevron-right"
-  | "document-text"
-  | "exclamation-triangle"
-  | "power"
-  | "wifi"
-  | "x-circle";
-
-const HEROICON_PATHS: Record<IconName, string> = {
-  "arrow-path":
-    "M16.023 9.348h4.992V4.356m-4.992 4.992 3.181-3.181a8.25 8.25 0 0 0-11.67 0 8.25 8.25 0 0 0 0 11.67 8.25 8.25 0 0 0 11.67 0l.814-.814",
-  "chart-bar": "M3.75 3v18m0 0h18M3.75 21l5.25-5.25 3.75 3.75L21 11.25M21 11.25v5.25m0-5.25h-5.25",
-  "chart-pie": "M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6ZM13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z",
-  "check-circle": "M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
-  "chevron-right": "m9 18 6-6-6-6",
-  "document-text":
-    "M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H6.75A2.25 2.25 0 0 0 4.5 4.5v15A2.25 2.25 0 0 0 6.75 21.75h5.625m-6.75-9h6m-6 3h4.5m8.25 1.5c0 1.243-1.12 2.25-2.5 2.25s-2.5-1.007-2.5-2.25S14.5 15 15.88 15s2.5 1.007 2.5 2.25Zm0 0c0 1.243 1.12 2.25 2.5 2.25s2.5-1.007 2.5-2.25S22.26 15 20.88 15s-2.5 1.007-2.5 2.25Z",
-  "exclamation-triangle":
-    "m12 9.75.008.008M10.71 3.51 2.36 18.04a1.875 1.875 0 0 0 1.63 2.82h16.02a1.875 1.875 0 0 0 1.63-2.82L13.29 3.51a1.875 1.875 0 0 0-2.58 0ZM12 15.75v-3",
-  power: "M12 2.25v9.75m6.364-6.364a9 9 0 1 1-12.728 0",
-  wifi: "M8.288 15.038a5.25 5.25 0 0 1 7.424 0m-10.076-2.652a9 9 0 0 1 12.728 0M3.72 9.72a11.625 11.625 0 0 1 16.56 0M12 18.75h.008v.008H12v-.008Z",
-  "x-circle": "m14.25 9.75-4.5 4.5m0-4.5 4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-};
-
-function heroIcon(name: IconName, className = ""): string {
-  return `<svg class="hero-icon ${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${HEROICON_PATHS[name]}" /></svg>`;
-}
-
-function escapeHtml(value: string): string {
-  const element = document.createElement("span");
-  element.textContent = value;
-  return element.innerHTML;
-}
+let currentSnapshot: ExtensionSnapshot | undefined;
+let lastPingedProbeAt: number | null = null;
+let sparkHoverIndex: number | null = null;
+let stripHoverIndex: number | null = null;
+let uptimeCells: UptimeCell[] = [];
 
 function getApp(): HTMLElement {
   const app = document.querySelector<HTMLElement>("#app");
@@ -47,92 +20,308 @@ function getApp(): HTMLElement {
   return app;
 }
 
-function setPopupMarkup(container: HTMLElement, markup: string): void {
-  const parsed = new DOMParser().parseFromString(markup, "text/html").body;
-  container.replaceChildren(...Array.from(parsed.childNodes));
+function getHero(
+  snapshot: ExtensionSnapshot,
+  state: DisplayState,
+  now: number
+): { value: string; unit: string; detail: string } {
+  const { runtime, settings } = snapshot;
+  const statusFor = formatCompactDuration(now - runtime.statusSince);
+  const lastLatency = runtime.latencyMs === null ? "—" : String(runtime.latencyMs);
+
+  if (state === "online") return { value: lastLatency, unit: "ms", detail: `Up ${statusFor}` };
+  if (state === "connection_issue") {
+    return { value: statusFor, unit: "failing", detail: "Checks are failing" };
+  }
+  if (state === "offline") return { value: statusFor, unit: "down", detail: "Device is offline" };
+  if (state === "paused") {
+    return {
+      value: lastLatency,
+      unit: runtime.latencyMs === null ? "" : "ms",
+      detail: runtime.latencyMs === null ? "Not checking" : "Last reading"
+    };
+  }
+  return { value: "—", unit: "", detail: `Every ${settings.intervalSeconds}s` };
 }
 
-function getEndpointOrigin(endpoint: string): string {
-  const url = new URL(endpoint);
-  return `${url.protocol}//${url.hostname}/*`;
+function renderPermissionPrompt(endpoint: string): string {
+  return `<section class="ui-alert" aria-label="Monitoring permission required"><span class="alert-symbol">!</span><div><strong>Allow connectivity checks</strong><p>Grant access to ${escapeHtml(new URL(endpoint).host)} to start monitoring.</p></div><button id="allow-monitoring" class="ui-button ui-button-small" type="button">Allow</button></section>`;
 }
 
-function formatAvailability(value: number | null, precision: Settings["precision"]): string {
-  return value === null ? "—" : `${value.toFixed(precision)}%`;
+function renderPopup(snapshot: ExtensionSnapshot, hasEndpointPermission: boolean): void {
+  const { settings } = snapshot;
+
+  document.documentElement.dataset.theme = settings.theme;
+  setMarkup(
+    getApp(),
+    `
+    <section class="popup-shell">
+      <header class="popup-header">
+        <div class="popup-brand">
+          <img class="logo-mark" src="assets/icons/icon-black.svg" width="26" height="26" alt="" />
+          <div><strong>Network Speed Monitor</strong><span class="version-pill">v${POPUP_VERSION}</span></div>
+        </div>
+        <button class="icon-button" type="button" data-dashboard-view="settings" title="Open settings" aria-label="Open settings">${heroIcon("cog-6-tooth")}</button>
+      </header>
+
+      <section class="popup-hero" aria-label="Current connection">
+        <div class="hero-top">
+          <span id="status-badge" class="status-badge" role="status"><i id="status-dot"></i><span id="status-label"></span></span>
+          <div class="hero-actions">
+            <button id="refresh" class="icon-button refresh-button" type="button" title="Check ${escapeHtml(new URL(settings.endpoint).host)} now" aria-label="Run a connection check">${heroIcon("arrow-path")}</button>
+            <button id="toggle-monitoring" class="icon-button power-button" type="button">${heroIcon("power")}</button>
+          </div>
+        </div>
+        <div class="hero-main">
+          <div class="hero-value"><strong id="hero-value" class="tabular"></strong><span id="hero-unit"></span></div>
+          <div class="hero-meta">
+            <span id="hero-detail" class="tabular"></span>
+            <button id="copy-public-ip" class="hero-ip tabular" type="button"><span>IP</span><span id="public-ip-value"></span>${heroIcon("document-duplicate", "copy-icon")}</button>
+          </div>
+        </div>
+        <div id="sparkline" class="sparkline">
+          <div id="sparkline-tip" class="popup-tip tabular"></div>
+          <svg viewBox="0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="sparkline-fill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stop-color="currentColor" stop-opacity="0.3" />
+                <stop offset="1" stop-color="currentColor" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <line id="sparkline-threshold" class="sparkline-threshold" x1="0" x2="${SPARKLINE_WIDTH}" />
+            <g id="sparkline-failures"></g>
+            <line id="sparkline-guide" class="sparkline-guide" y1="0" y2="${SPARKLINE_HEIGHT}" />
+            <path id="sparkline-area" fill="url(#sparkline-fill)" />
+            <polyline id="sparkline-line" class="sparkline-line" />
+          </svg>
+        </div>
+      </section>
+
+      ${hasEndpointPermission ? "" : renderPermissionPrompt(settings.endpoint)}
+
+      <section class="uptime" aria-label="Connection over the last 24 hours">
+        <div class="uptime-head"><span>Last 24 hours</span></div>
+        <div id="uptime-tip" class="popup-tip tabular"></div>
+        <div id="uptime-strip" class="uptime-strip">${"<span></span>".repeat(UPTIME_CELL_COUNT)}</div>
+      </section>
+
+      <section class="popup-stats" aria-label="Last 24 hours on this device">
+        <div><span>Disconnects</span><strong id="stat-disconnects" class="tabular"></strong></div>
+        <div><span>Downtime</span><strong id="stat-downtime" class="tabular"></strong></div>
+        <div><span>Availability</span><strong id="stat-availability" class="tabular"></strong></div>
+      </section>
+
+      <nav class="popup-nav" aria-label="Monitor pages">
+        <button type="button" data-dashboard-view="realtime">${heroIcon("signal")}<span>Live</span></button>
+        <button type="button" data-dashboard-view="log">${heroIcon("document-text")}<span>Log</span></button>
+        <button type="button" data-dashboard-view="stats">${heroIcon("chart-pie")}<span>Stats</span></button>
+      </nav>
+    </section>`
+  );
+
+  bindPopupEvents();
+  renderedSettingsKey = JSON.stringify(settings);
+  renderedEndpointPermission = hasEndpointPermission;
+  lastPingedProbeAt = snapshot.runtime.lastProbeAt;
+  sparkHoverIndex = null;
+  stripHoverIndex = null;
 }
 
-function getStatusDescription(snapshot: ExtensionSnapshot): string {
-  if (!snapshot.settings.enabled) {
-    return "Monitoring is paused. Start it when you want to collect connection data.";
+function updateHero(snapshot: ExtensionSnapshot, state: DisplayState, now: number): void {
+  const hero = getHero(snapshot, state, now);
+  const badge = byId("status-badge");
+  const value = byId("hero-value");
+  const power = byId<HTMLButtonElement>("toggle-monitoring");
+  if (!badge || !value || !power) return;
+
+  badge.dataset.state = state;
+  value.dataset.state = state;
+  byId("status-label")!.textContent = STATUS_LABELS[state];
+  value.textContent = hero.value;
+  byId("hero-unit")!.textContent = hero.unit;
+  byId("hero-detail")!.textContent = hero.detail;
+
+  const paused = state === "paused";
+  power.classList.toggle("is-paused", paused);
+  power.title = paused ? "Start monitoring" : "Stop monitoring";
+  power.setAttribute("aria-label", power.title);
+
+  // Ping once per completed check so the dot reflects real probe activity.
+  const probeAt = snapshot.runtime.lastProbeAt;
+  if (probeAt !== lastPingedProbeAt) {
+    lastPingedProbeAt = probeAt;
+    const dot = byId("status-dot");
+    if (dot && (state === "online" || state === "connection_issue")) {
+      dot.classList.remove("ping");
+      void dot.offsetWidth;
+      dot.classList.add("ping");
+    }
+  }
+}
+
+function sparklineY(latencyMs: number, maxMs: number): number {
+  return SPARKLINE_HEIGHT - 3 - (Math.min(latencyMs, maxMs) / maxMs) * (SPARKLINE_HEIGHT - 6);
+}
+
+function updateSparkline(snapshot: ExtensionSnapshot, state: DisplayState): void {
+  const container = byId("sparkline");
+  if (!container) return;
+
+  const samples = snapshot.runtime.samples.slice(-SPARKLINE_SAMPLES);
+  const step = SPARKLINE_WIDTH / (SPARKLINE_SAMPLES - 1);
+  const offset = SPARKLINE_SAMPLES - samples.length;
+  const maxMs = Math.max(
+    SPARKLINE_THRESHOLD_MS * 1.3,
+    ...samples.map((sample) => sample.latencyMs ?? 0)
+  );
+  const points: string[] = [];
+  let failures = "";
+  let bandStart: number | null = null;
+  let bandEnd = 0;
+
+  // Consecutive failed checks merge into one shaded band, like the dashboard chart.
+  const closeBand = () => {
+    if (bandStart === null) return;
+    const from = Math.max(0, bandStart - step / 2);
+    const to = Math.min(SPARKLINE_WIDTH, bandEnd + step / 2);
+    failures += `<rect x="${from.toFixed(1)}" y="0" width="${Math.max(3, to - from).toFixed(1)}" height="${SPARKLINE_HEIGHT}" rx="2" />`;
+    bandStart = null;
+  };
+
+  samples.forEach((sample, index) => {
+    const x = (offset + index) * step;
+    if (isFailureStatus(sample.status)) {
+      bandStart ??= x;
+      bandEnd = x;
+    } else {
+      closeBand();
+    }
+    if (sample.latencyMs !== null) {
+      points.push(`${x.toFixed(1)},${sparklineY(sample.latencyMs, maxMs).toFixed(1)}`);
+    }
+  });
+  closeBand();
+
+  container.dataset.state = state;
+  const thresholdY = sparklineY(SPARKLINE_THRESHOLD_MS, maxMs).toFixed(1);
+  const threshold = byId<SVGLineElement>("sparkline-threshold")!;
+  threshold.setAttribute("y1", thresholdY);
+  threshold.setAttribute("y2", thresholdY);
+  setSvgMarkup(byId<SVGGElement>("sparkline-failures")!, failures);
+  byId<SVGPolylineElement>("sparkline-line")!.setAttribute("points", points.join(" "));
+  byId<SVGPathElement>("sparkline-area")!.setAttribute(
+    "d",
+    points.length > 1
+      ? `M${points[0].split(",")[0]},${SPARKLINE_HEIGHT} L${points.join(" L")} L${points[points.length - 1].split(",")[0]},${SPARKLINE_HEIGHT} Z`
+      : ""
+  );
+  showSparklineTip();
+}
+
+function showSparklineTip(): void {
+  const container = byId("sparkline");
+  const tip = byId("sparkline-tip");
+  const guide = byId<SVGLineElement>("sparkline-guide");
+  if (!container || !tip || !guide || !currentSnapshot) return;
+
+  const samples = currentSnapshot.runtime.samples.slice(-SPARKLINE_SAMPLES);
+  const offset = SPARKLINE_SAMPLES - samples.length;
+  const sample = sparkHoverIndex === null ? undefined : samples[sparkHoverIndex - offset];
+  if (sparkHoverIndex === null || !sample) {
+    tip.classList.remove("is-visible");
+    guide.classList.remove("is-visible");
+    return;
   }
 
-  const host = new URL(snapshot.settings.endpoint).host;
-  const interval = snapshot.settings.intervalSeconds;
+  const ago = Date.now() - sample.at;
+  const value = sample.latencyMs === null ? "Failed" : `${sample.latencyMs} ms`;
+  setMarkup(tip, `${value} <small>${ago < 1_500 ? "now" : `${formatDuration(ago)} ago`}</small>`);
+  const ratio = sparkHoverIndex / (SPARKLINE_SAMPLES - 1);
+  const half = tip.offsetWidth / 2 + 2;
+  tip.style.left = `${Math.min(Math.max(ratio * container.clientWidth, half), container.clientWidth - half)}px`;
+  tip.classList.add("is-visible");
+  const x = String(ratio * SPARKLINE_WIDTH);
+  guide.setAttribute("x1", x);
+  guide.setAttribute("x2", x);
+  guide.classList.add("is-visible");
+}
 
-  if (snapshot.runtime.status === "online") {
-    return `Checking ${host} every ${interval} second${interval === 1 ? "" : "s"}`;
+function updateUptime(snapshot: ExtensionSnapshot, now: number): void {
+  const strip = byId("uptime-strip");
+  if (!strip) return;
+
+  uptimeCells = buildUptimeCells(snapshot.segments, now);
+  Array.from(strip.children).forEach((cell, index) => {
+    (cell as HTMLElement).dataset.status = uptimeCells[index]?.status ?? "no_data";
+  });
+
+  const last24h = calculateStats(snapshot.segments, now - DAY_MS, now);
+  const availability = byId("stat-availability")!;
+  availability.textContent =
+    last24h.availability === null
+      ? "—"
+      : `${last24h.availability.toFixed(snapshot.settings.precision)}%`;
+  // Expert precision (7 digits) needs a smaller size to fit its third of the row.
+  availability.classList.toggle("is-long", snapshot.settings.precision > 2);
+  byId("stat-disconnects")!.textContent = String(last24h.disconnects);
+  byId("stat-downtime")!.textContent = formatCompactDuration(last24h.downtimeMs);
+  showUptimeTip();
+}
+
+function showUptimeTip(): void {
+  const strip = byId("uptime-strip");
+  const tip = byId("uptime-tip");
+  if (!strip || !tip || !currentSnapshot) return;
+
+  const cell = stripHoverIndex === null ? undefined : uptimeCells[stripHoverIndex];
+  strip.classList.toggle("is-hovering", Boolean(cell));
+  Array.from(strip.children).forEach((element, index) =>
+    element.classList.toggle("is-active", index === stripHoverIndex)
+  );
+  if (!cell || stripHoverIndex === null) {
+    tip.classList.remove("is-visible");
+    return;
   }
 
-  return "The monitor will keep checking and log any connection changes.";
+  const isCurrent = stripHoverIndex === uptimeCells.length - 1;
+  setMarkup(tip, describeUptimeTip(cell, isCurrent, currentSnapshot.settings));
+
+  const host = strip.parentElement!;
+  const box = strip.children[stripHoverIndex].getBoundingClientRect();
+  const center = box.left + box.width / 2 - host.getBoundingClientRect().left;
+  const half = tip.offsetWidth / 2 + 2;
+  tip.style.left = `${Math.min(Math.max(center, half), host.clientWidth - half)}px`;
+  tip.classList.add("is-visible");
 }
 
-function getStatusIcon(status: ConnectionStatus): IconName {
-  if (status === "online") return "check-circle";
-  if (status === "connection_issue") return "exclamation-triangle";
-  if (status === "offline") return "x-circle";
-  return "power";
+function updatePublicIp(snapshot: ExtensionSnapshot): void {
+  const button = byId<HTMLButtonElement>("copy-public-ip");
+  if (!button || button.dataset.copied === "true") return;
+
+  const ip = snapshot.runtime.publicIp;
+  byId("public-ip-value")!.textContent = ip ?? "checking…";
+  button.disabled = !ip;
+  button.dataset.ip = ip ?? "";
+  button.title = ip ? "Copy public IP address" : "Checking your public IP";
 }
 
-function getLatencyTone(latencyMs: number | null): string {
-  if (latencyMs === null) return "metric-neutral";
-  return latencyMs < 200 ? "metric-good" : "metric-warning";
-}
+function updatePopupLive(snapshot: ExtensionSnapshot, hasEndpointPermission: boolean): boolean {
+  if (
+    renderedSettingsKey !== JSON.stringify(snapshot.settings) ||
+    renderedEndpointPermission !== hasEndpointPermission ||
+    !byId("hero-value")
+  ) {
+    return false;
+  }
 
-function getDisconnectTone(disconnects: number): string {
-  if (disconnects === 0) return "metric-good";
-  return disconnects <= 2 ? "metric-warning" : "metric-danger";
-}
-
-function getAvailabilityTone(availability: number | null): string {
-  if (availability === null) return "metric-neutral";
-  if (availability >= 99.5) return "metric-good";
-  return availability >= 95 ? "metric-warning" : "metric-danger";
-}
-
-function getDowntimeTone(stats: AggregateStats): string {
-  if (stats.monitoredMs === 0) return "metric-neutral";
-  const downtimeRatio = stats.downtimeMs / stats.monitoredMs;
-  if (downtimeRatio < 0.005) return "metric-good";
-  return downtimeRatio < 0.05 ? "metric-warning" : "metric-danger";
-}
-
-function getConnectionTone(snapshot: ExtensionSnapshot): string {
-  if (!snapshot.settings.enabled || snapshot.runtime.status === "no_data") return "metric-neutral";
-  if (snapshot.runtime.status === "online") return "metric-good";
-  if (snapshot.runtime.status === "connection_issue") return "metric-warning";
-  return "metric-danger";
-}
-
-function getOnlineDuration(runtime: RuntimeState): string {
-  return runtime.status === "online" ? formatDuration(Date.now() - runtime.statusSince) : "—";
-}
-
-function renderDataRow(
-  label: string,
-  value: string,
-  tooltip: string,
-  tone = "metric-neutral",
-  copyable = false
-): string {
-  const metricId = label.toLowerCase().replaceAll(" ", "-");
-  const valueMarkup = copyable
-    ? `<button id="copy-public-ip" class="metric-pill ${tone} copyable-metric" type="button" data-ip="${escapeHtml(value)}" aria-label="Copy public IP address">${escapeHtml(value)}</button>`
-    : `<strong class="metric-pill ${tone}">${escapeHtml(value)}</strong>`;
-  return `<div class="data-row has-tooltip" data-metric="${metricId}" data-tooltip="${escapeHtml(tooltip)}"><span>${label}</span>${valueMarkup}</div>`;
-}
-
-function renderNavigationRow(icon: IconName, label: string, hash: string): string {
-  return `<button class="navigation-row" type="button" data-dashboard-view="${hash}">${heroIcon(icon)}<span>${label}</span>${heroIcon("chevron-right", "navigation-chevron")}</button>`;
+  const now = Date.now();
+  const state = getDisplayState(snapshot);
+  currentSnapshot = snapshot;
+  updateHero(snapshot, state, now);
+  updateSparkline(snapshot, state);
+  updateUptime(snapshot, now);
+  updatePublicIp(snapshot);
+  return true;
 }
 
 async function openDashboard(view: string): Promise<void> {
@@ -142,159 +331,29 @@ async function openDashboard(view: string): Promise<void> {
   window.close();
 }
 
-function renderPermissionPrompt(endpoint: string): string {
-  return `<section class="ui-alert" aria-label="Monitoring permission required"><span class="alert-symbol">!</span><div><strong>Allow connectivity checks</strong><p>Grant access to ${escapeHtml(new URL(endpoint).host)} to start monitoring.</p></div><button id="allow-monitoring" class="ui-button ui-button-small" type="button">Allow</button></section>`;
-}
-
-function renderPopup(snapshot: ExtensionSnapshot, hasEndpointPermission: boolean): void {
-  const { runtime, settings, stats } = snapshot;
-  const app = getApp();
-  const latency = runtime.latencyMs === null ? "Measuring…" : `${runtime.latencyMs} ms`;
-  const statusClass = runtime.status.replace("_", "-");
-  const connectionTone = getConnectionTone(snapshot);
-  const endpointHost = new URL(settings.endpoint).host;
-
-  document.documentElement.dataset.theme = settings.theme;
-  setPopupMarkup(
-    app,
-    `
-    <section class="popup-shell shadcn-popup">
-      <header class="popup-header">
-        <div class="popup-brand">
-          <img class="logo-mark" src="assets/icons/icon-black.svg" width="32" height="32" alt="" />
-          <div><strong>Network Speed Monitor</strong><span>Connection health</span></div>
-        </div>
-        <button class="icon-button settings-button" type="button" data-dashboard-view="settings" title="Open settings" aria-label="Open settings"><img class="settings-cog" src="assets/icons/cog-wheel.svg" width="18" height="18" alt="" /></button>
-      </header>
-
-      <section class="ui-card status-card ${statusClass}">
-        <div class="status-card-icon" data-live="status-icon">${heroIcon(getStatusIcon(runtime.status))}</div>
-        <div class="status-copy"><span class="ui-badge ${statusClass}"><i></i><span data-live="status-label">${statusLabel(runtime.status)}</span></span><h1 data-live="status-heading">${runtime.status === "online" ? "Internet is connected" : statusLabel(runtime.status)}</h1><p data-live="status-description">${getStatusDescription(snapshot)}</p></div>
-        <div class="status-actions"><button id="refresh" class="icon-button refresh-button" type="button" title="Run a connection check" aria-label="Run a connection check">${heroIcon("arrow-path")}</button><button id="toggle-monitoring" class="icon-button monitor-power ${settings.enabled ? "is-running" : ""}" type="button" title="${settings.enabled ? "Stop monitoring" : "Start monitoring"}" aria-label="${settings.enabled ? "Stop monitoring" : "Start monitoring"}">${heroIcon("power")}</button></div>
-      </section>
-
-      ${hasEndpointPermission ? "" : renderPermissionPrompt(settings.endpoint)}
-
-      <section class="ui-card data-card" aria-label="Current connection details">
-        ${renderDataRow("Public IP", runtime.publicIp ?? "Checking…", "Your public IP address. Click to copy to clipboard.", runtime.status === "online" ? "metric-info" : connectionTone, Boolean(runtime.publicIp))}
-        ${renderDataRow("Latency", latency, `Response time is measured against ${endpointHost} over HTTPS. It is shown in milliseconds; it is 1/1000 of a second.\n\nHigher values can indicate a slower connection or a busy route.\n\nTurns green if less than 200 ms.`, getLatencyTone(runtime.latencyMs))}
-        ${renderDataRow("Online for", getOnlineDuration(runtime), "The period since the connection was last confirmed online. Monitoring gaps are not counted as disconnects.", connectionTone)}
-      </section>
-
-      <section class="ui-card summary-card ${settings.precision === 7 ? "precision-expert" : ""}" aria-label="Today's connection summary for this device">
-        <div class="summary-heading"><span>Today <small class="summary-scope">(this device)</small></span><span class="live-dot">Live</span></div>
-        <div class="summary-grid">
-          <div class="has-tooltip" data-metric="disconnects" data-tooltip="Internet disconnects counted today.\nGreen: 0 · Amber: 1–2 · Red: 3 or more."><strong class="metric-pill ${getDisconnectTone(stats.today.disconnects)}">${stats.today.disconnects}</strong><span>Disconnects</span></div>
-          <div class="has-tooltip" data-metric="availability" data-tooltip="Internet availability today.\nGreen: 99.5% or more · Amber: 95–99.49% · Red: below 95%."><strong class="metric-pill ${getAvailabilityTone(stats.today.availability)}">${formatAvailability(stats.today.availability, settings.precision)}</strong><span>Availability</span></div>
-          <div class="has-tooltip" data-metric="downtime" data-tooltip="Downtime today — when the connection was down.\nGreen: below 0.5% · Amber: 0.5–4.99% · Red: 5% or more of today's monitored time."><strong class="metric-pill ${getDowntimeTone(stats.today)}">${formatDuration(stats.today.downtimeMs)}</strong><span>Downtime</span></div>
-        </div>
-      </section>
-
-      <nav class="ui-card navigation-card" aria-label="Monitor pages">
-        ${renderNavigationRow("chart-bar", "Realtime monitor", "realtime")}
-        ${renderNavigationRow("document-text", "Connection log", "log")}
-        ${renderNavigationRow("chart-pie", "Connection statistics", "stats")}
-      </nav>
-
-      <footer class="popup-footer"><span>Updates every second while open</span><span>v${POPUP_VERSION}</span></footer>
-    </section>`
-  );
-
-  bindPopupEvents(snapshot);
-  renderedSettingsKey = JSON.stringify(settings);
-  renderedEndpointPermission = hasEndpointPermission;
-}
-
-function updateMetric(metricId: string, value: string, tone: string): boolean {
-  const valueElement = document.querySelector<HTMLElement>(
-    `[data-metric="${metricId}"] .metric-pill`
-  );
-  if (!valueElement) return false;
-
-  valueElement.textContent = value;
-  valueElement.className = `metric-pill ${tone}${valueElement.id === "copy-public-ip" ? " copyable-metric" : ""}`;
-  return true;
-}
-
-function updatePopupLive(snapshot: ExtensionSnapshot, hasEndpointPermission: boolean): boolean {
-  if (
-    renderedSettingsKey !== JSON.stringify(snapshot.settings) ||
-    renderedEndpointPermission !== hasEndpointPermission
-  ) {
-    return false;
-  }
-
-  const { runtime, settings, stats } = snapshot;
-  const statusClass = runtime.status.replace("_", "-");
-  const connectionTone = getConnectionTone(snapshot);
-  const statusCard = document.querySelector<HTMLElement>(".status-card");
-  const statusIcon = document.querySelector<HTMLElement>('[data-live="status-icon"]');
-  const statusBadge = document.querySelector<HTMLElement>(".status-copy .ui-badge");
-  const statusLabelElement = document.querySelector<HTMLElement>('[data-live="status-label"]');
-  const statusHeading = document.querySelector<HTMLElement>('[data-live="status-heading"]');
-  const statusDescription = document.querySelector<HTMLElement>('[data-live="status-description"]');
-  const monitorButton = document.querySelector<HTMLButtonElement>("#toggle-monitoring");
-  const publicIpButton = document.querySelector<HTMLButtonElement>("#copy-public-ip");
-
-  if (
-    !statusCard ||
-    !statusIcon ||
-    !statusBadge ||
-    !statusLabelElement ||
-    !statusHeading ||
-    !statusDescription ||
-    !monitorButton
-  ) {
-    return false;
-  }
-
-  if (runtime.publicIp && !publicIpButton) return false;
-
-  statusCard.className = `ui-card status-card ${statusClass}`;
-  setPopupMarkup(statusIcon, heroIcon(getStatusIcon(runtime.status)));
-  statusBadge.className = `ui-badge ${statusClass}`;
-  statusLabelElement.textContent = statusLabel(runtime.status);
-  statusHeading.textContent =
-    runtime.status === "online" ? "Internet is connected" : statusLabel(runtime.status);
-  statusDescription.textContent = getStatusDescription(snapshot);
-  monitorButton.className = `icon-button monitor-power ${settings.enabled ? "is-running" : ""}`;
-  monitorButton.title = settings.enabled ? "Stop monitoring" : "Start monitoring";
-  monitorButton.setAttribute("aria-label", monitorButton.title);
-
-  if (publicIpButton && runtime.publicIp) {
-    publicIpButton.textContent = runtime.publicIp;
-    publicIpButton.dataset.ip = runtime.publicIp;
-    publicIpButton.className = `metric-pill ${runtime.status === "online" ? "metric-info" : connectionTone} copyable-metric`;
-  }
-
-  const latency = runtime.latencyMs === null ? "Measuring…" : `${runtime.latencyMs} ms`;
-  return [
-    updateMetric("latency", latency, getLatencyTone(runtime.latencyMs)),
-    updateMetric("online-for", getOnlineDuration(runtime), connectionTone),
-    updateMetric(
-      "disconnects",
-      String(stats.today.disconnects),
-      getDisconnectTone(stats.today.disconnects)
-    ),
-    updateMetric(
-      "availability",
-      formatAvailability(stats.today.availability, settings.precision),
-      getAvailabilityTone(stats.today.availability)
-    ),
-    updateMetric("downtime", formatDuration(stats.today.downtimeMs), getDowntimeTone(stats.today))
-  ].every(Boolean);
-}
-
 function renderError(error: unknown): void {
   const message = error instanceof Error ? error.message : "The monitor could not start.";
-  setPopupMarkup(
+  setMarkup(
     getApp(),
     `<section class="popup-shell popup-error"><img class="logo-mark" src="assets/icons/icon-black.svg" width="40" height="40" alt="" /><h1>Monitor unavailable</h1><p>${escapeHtml(message)}</p><button id="retry" class="ui-button" type="button">Try again</button></section>`
   );
+  renderedSettingsKey = undefined;
   document.querySelector("#retry")?.addEventListener("click", () => void loadPopup());
 }
 
-function bindPopupEvents(snapshot: ExtensionSnapshot): void {
+function hoverIndex(
+  event: MouseEvent,
+  element: HTMLElement,
+  count: number,
+  round: boolean
+): number {
+  const box = element.getBoundingClientRect();
+  const ratio = (event.clientX - box.left) / box.width;
+  const index = round ? Math.round(ratio * (count - 1)) : Math.floor(ratio * count);
+  return Math.min(Math.max(index, 0), count - 1);
+}
+
+function bindPopupEvents(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-dashboard-view]").forEach((button) => {
     button.addEventListener("click", async () => {
       const view = button.dataset.dashboardView;
@@ -309,52 +368,102 @@ function bindPopupEvents(snapshot: ExtensionSnapshot): void {
     });
   });
 
-  document.querySelector("#refresh")?.addEventListener("click", async () => {
-    await browser.runtime.sendMessage({ type: "probeNow" } as RuntimeRequest);
+  document.querySelector("#refresh")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    button.classList.remove("is-spinning");
+    void button.offsetWidth;
+    button.classList.add("is-spinning");
+    try {
+      await browser.runtime.sendMessage({ type: "probeNow" } as RuntimeRequest);
+    } catch (error) {
+      renderError(error);
+      return;
+    }
     await loadPopup();
   });
 
-  document
-    .querySelector<HTMLButtonElement>("#copy-public-ip")
-    ?.addEventListener("click", async (event) => {
-      const button = event.currentTarget as HTMLButtonElement;
-      const ip = button.dataset.ip;
-      if (!ip) return;
+  byId<HTMLButtonElement>("copy-public-ip")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const ip = button.dataset.ip;
+    if (!ip) return;
 
+    let label = "Copied";
+    try {
       await navigator.clipboard.writeText(ip);
-      button.setAttribute("aria-label", "Public IP copied to clipboard");
-    });
+    } catch {
+      label = "Copy failed";
+    }
+    button.dataset.copied = "true";
+    byId("public-ip-value")!.textContent = label;
+    window.setTimeout(() => {
+      button.dataset.copied = "false";
+      if (currentSnapshot) updatePublicIp(currentSnapshot);
+    }, 1_200);
+  });
+
+  const sparkline = byId("sparkline");
+  sparkline?.addEventListener("mousemove", (event) => {
+    sparkHoverIndex = hoverIndex(event, sparkline, SPARKLINE_SAMPLES, true);
+    showSparklineTip();
+  });
+  sparkline?.addEventListener("mouseleave", () => {
+    sparkHoverIndex = null;
+    showSparklineTip();
+  });
+
+  const strip = byId("uptime-strip");
+  strip?.addEventListener("mousemove", (event) => {
+    stripHoverIndex = hoverIndex(event, strip, UPTIME_CELL_COUNT, false);
+    showUptimeTip();
+  });
+  strip?.addEventListener("mouseleave", () => {
+    stripHoverIndex = null;
+    showUptimeTip();
+  });
 
   document.querySelector("#allow-monitoring")?.addEventListener("click", async () => {
-    const granted = await browser.permissions.request({
-      origins: [getEndpointOrigin(snapshot.settings.endpoint), "https://api.ipify.org/*"]
-    });
+    if (!currentSnapshot) return;
+    try {
+      const granted = await browser.permissions.request({
+        origins: [getEndpointOrigin(currentSnapshot.settings.endpoint), "https://api.ipify.org/*"]
+      });
 
-    if (granted) {
-      await browser.runtime.sendMessage({
-        type: "saveSettings",
-        settings: snapshot.settings
-      } as RuntimeRequest);
+      if (granted) {
+        await browser.runtime.sendMessage({
+          type: "saveSettings",
+          settings: currentSnapshot.settings
+        } as RuntimeRequest);
+      }
+    } catch (error) {
+      renderError(error);
+      return;
     }
 
     await loadPopup();
   });
 
   document.querySelector("#toggle-monitoring")?.addEventListener("click", async () => {
-    const enabled = !snapshot.settings.enabled;
-    if (enabled) {
-      const origin = getEndpointOrigin(snapshot.settings.endpoint);
-      const hasPermission = await browser.permissions.contains({ origins: [origin] });
-      if (!hasPermission) {
-        const granted = await browser.permissions.request({ origins: [origin] });
+    if (!currentSnapshot) return;
+    const settings = currentSnapshot.settings;
+    const enabled = !settings.enabled;
+    try {
+      if (enabled) {
+        // permissions.request must be the first await so Firefox still counts it as
+        // part of the click; it resolves without a prompt when access already exists.
+        const granted = await browser.permissions.request({
+          origins: [getEndpointOrigin(settings.endpoint)]
+        });
         if (!granted) return;
       }
-    }
 
-    await browser.runtime.sendMessage({
-      type: "saveSettings",
-      settings: { ...snapshot.settings, enabled }
-    } as RuntimeRequest);
+      await browser.runtime.sendMessage({
+        type: "saveSettings",
+        settings: { ...settings, enabled }
+      } as RuntimeRequest);
+    } catch (error) {
+      renderError(error);
+      return;
+    }
     await loadPopup();
   });
 }
@@ -373,15 +482,21 @@ function stopPopupLiveUpdates(): void {
 
 async function loadPopup(): Promise<void> {
   try {
+    // The popup only shows the last 24 hours and works out its own figures for them,
+    // so it asks for just that slice of history and no all-time statistics.
     const snapshot = (await browser.runtime.sendMessage({
-      type: "getSnapshot"
+      type: "getSnapshot",
+      segmentsSince: Date.now() - DAY_MS - UPTIME_CELL_MS,
+      includeStats: false
     } as RuntimeRequest)) as ExtensionSnapshot;
     const hasEndpointPermission = await browser.permissions.contains({
       origins: [getEndpointOrigin(snapshot.settings.endpoint)]
     });
 
+    currentSnapshot = snapshot;
     if (!updatePopupLive(snapshot, hasEndpointPermission)) {
       renderPopup(snapshot, hasEndpointPermission);
+      updatePopupLive(snapshot, hasEndpointPermission);
     }
   } catch (error) {
     renderError(error);

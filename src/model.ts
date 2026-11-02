@@ -11,6 +11,8 @@ const DEFAULT_SETTINGS: Settings = {
 
 const MAX_SEGMENTS = 6500;
 const MAX_SAMPLES = 300;
+const UPTIME_CELL_MS = 30 * 60_000;
+const UPTIME_CELL_COUNT = 48;
 
 function makeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -127,4 +129,41 @@ function calculateStats(segments: StatusSegment[], from: number, to: number): Ag
     downtimeMs,
     availability: monitoredMs ? ((monitoredMs - downtimeMs) / monitoredMs) * 100 : null
   };
+}
+
+// Splits the recent history into fixed windows for the popup's uptime strip.
+// Windows align to local clock time (so half-hours start at :00 and :30 even in
+// zones like UTC+5:45); the last window contains `now` and ends at `now`.
+function buildUptimeCells(
+  segments: StatusSegment[],
+  now: number,
+  count = UPTIME_CELL_COUNT,
+  cellMs = UPTIME_CELL_MS
+): UptimeCell[] {
+  const localOffset = -new Date(now).getTimezoneOffset() * 60_000;
+  const lastStart = now - ((((now + localOffset) % cellMs) + cellMs) % cellMs);
+  const windowStart = lastStart - (count - 1) * cellMs;
+  const recent = segments.filter((segment) => (segment.endedAt ?? now) > windowStart);
+  const cells: UptimeCell[] = [];
+
+  for (let index = 0; index < count; index++) {
+    const from = windowStart + index * cellMs;
+    const to = Math.min(from + cellMs, now);
+    const cell: UptimeCell = { from, to, status: "no_data", onlineMs: 0, issueMs: 0, offlineMs: 0 };
+
+    for (const segment of recent) {
+      const duration = Math.min(to, segment.endedAt ?? now) - Math.max(from, segment.startedAt);
+      if (duration <= 0) continue;
+      if (segment.status === "online") cell.onlineMs += duration;
+      if (segment.status === "connection_issue") cell.issueMs += duration;
+      if (segment.status === "offline") cell.offlineMs += duration;
+    }
+
+    if (cell.offlineMs > 0) cell.status = "offline";
+    else if (cell.issueMs > 0) cell.status = "connection_issue";
+    else if (cell.onlineMs > 0) cell.status = "online";
+    cells.push(cell);
+  }
+
+  return cells;
 }

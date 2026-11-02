@@ -48,6 +48,15 @@ interface StoredData {
   runtime: Omit<RuntimeState, "samples">;
 }
 
+interface UptimeCell {
+  from: number;
+  to: number;
+  status: ConnectionStatus;
+  onlineMs: number;
+  issueMs: number;
+  offlineMs: number;
+}
+
 interface AggregateStats {
   disconnects: number;
   monitoredMs: number;
@@ -59,7 +68,8 @@ interface ExtensionSnapshot {
   settings: Settings;
   segments: StatusSegment[];
   runtime: RuntimeState;
-  stats: Record<"today" | "week" | "month" | "all", AggregateStats>;
+  // Left out when the view asked for a snapshot without statistics.
+  stats?: Record<"today" | "week" | "month" | "all", AggregateStats>;
 }
 
 interface RuntimeRequest {
@@ -75,4 +85,6 @@ interface RuntimeRequest {
     | "popupClosed";
   settings?: Settings;
   sound?: AlertSound;
+  segmentsSince?: number;
+  includeStats?: boolean;
 }

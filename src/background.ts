@@ -43,7 +43,7 @@ function handleRuntimeMessage(request: RuntimeRequest): Promise<unknown> | undef
   return getMonitor().then(async (activeMonitor) => {
     switch (request.type) {
       case "getSnapshot":
-        return activeMonitor.snapshot();
+        return activeMonitor.snapshot(request.segmentsSince, request.includeStats);
       case "saveSettings":
         if (!request.settings) throw new Error("Settings are missing.");
         await activeMonitor.updateSettings(request.settings);

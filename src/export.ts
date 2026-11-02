@@ -14,6 +14,7 @@ function createCsv(snapshot: ExtensionSnapshot): string {
 }
 
 function createPdf(snapshot: ExtensionSnapshot): string {
+  if (!snapshot.stats) throw new Error("The report needs a snapshot with statistics.");
   const stats = snapshot.stats.all;
   const lines = [
     "Network Speed Monitor report",
