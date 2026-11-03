@@ -1,13 +1,11 @@
 const STORAGE_KEY = "networkSpeedMonitor";
 
 function storedDefault(): StoredData {
-  const runtime = defaultRuntime();
-  const { samples, ...savedRuntime } = runtime;
   return {
     schemaVersion: 1,
     settings: { ...DEFAULT_SETTINGS },
     segments: [],
-    runtime: savedRuntime
+    runtime: defaultRuntime()
   };
 }
 
@@ -19,7 +17,12 @@ async function loadStored(): Promise<StoredData> {
     ...stored,
     settings: { ...DEFAULT_SETTINGS, ...stored.settings },
     segments: Array.isArray(stored.segments) ? stored.segments : [],
-    runtime: { ...defaultRuntime(), ...stored.runtime }
+    runtime: {
+      ...defaultRuntime(),
+      ...stored.runtime,
+      // Data saved before samples were stored has none.
+      samples: Array.isArray(stored.runtime?.samples) ? stored.runtime.samples : []
+    }
   };
 }
 

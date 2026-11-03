@@ -110,6 +110,39 @@ function isFailureStatus(status: ConnectionStatus): boolean {
   return status === "offline" || status === "connection_issue";
 }
 
+function describeSampleLatency(sample: RealtimeSample): string {
+  if (sample.latencyMs !== null) return `${sample.latencyMs} ms`;
+  return sample.status === "no_data" ? "Not monitored" : "Failed";
+}
+
+// Line and filled-area paths for a latency chart. A null point breaks the line, so time
+// when nothing was checked (the browser was closed, or monitoring paused) is not drawn
+// as a slope between unrelated readings.
+function latencyPaths(
+  points: ([number, number] | null)[],
+  baseline: number
+): { line: string; area: string } {
+  let line = "";
+  let area = "";
+  let run: [number, number][] = [];
+  const flush = () => {
+    if (run.length > 1) {
+      const coords = run.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" L");
+      const first = run[0][0].toFixed(1);
+      const last = run[run.length - 1][0].toFixed(1);
+      line += `M${coords} `;
+      area += `M${first},${baseline} L${coords} L${last},${baseline} Z `;
+    }
+    run = [];
+  };
+  for (const point of points) {
+    if (point) run.push(point);
+    else flush();
+  }
+  flush();
+  return { line: line.trim(), area: area.trim() };
+}
+
 function describeUptimeCell(cell: UptimeCell): string {
   if (cell.offlineMs > 0) {
     const issue = cell.issueMs > 0 ? `, issues ${formatDuration(cell.issueMs)}` : "";

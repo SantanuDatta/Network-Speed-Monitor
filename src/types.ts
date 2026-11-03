@@ -45,7 +45,8 @@ interface StoredData {
   schemaVersion: number;
   settings: Settings;
   segments: StatusSegment[];
-  runtime: Omit<RuntimeState, "samples">;
+  // Recent samples are saved too, so the latency charts survive a browser restart.
+  runtime: RuntimeState;
 }
 
 interface UptimeCell {

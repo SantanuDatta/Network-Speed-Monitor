@@ -373,6 +373,87 @@ test("disabling monitoring aborts in-flight probes and cannot restore old status
   });
 });
 
+test("saved samples survive a restart behind a gap, after an unrecorded warm-up check", async () => {
+  const now = Date.now();
+  let stored = {
+    networkSpeedMonitor: {
+      schemaVersion: 1,
+      settings: {
+        enabled: true,
+        intervalSeconds: 1,
+        endpoint: "https://probe.example.test/ping",
+        theme: "system",
+        soundOnline: false,
+        soundOffline: false,
+        dateFormat: "locale",
+        precision: 2
+      },
+      segments: [],
+      runtime: {
+        status: "online",
+        statusSince: now - 7_200_000,
+        latencyMs: 30,
+        publicIp: null,
+        lastProbeAt: now - 3_600_000,
+        lastHeartbeatAt: now - 3_600_000,
+        samples: [{ at: now - 3_600_000, status: "online", latencyMs: 30 }]
+      }
+    }
+  };
+  const browser = {
+    storage: {
+      local: {
+        get: async () => stored,
+        set: async (value) => {
+          stored = value;
+        }
+      }
+    },
+    permissions: { contains: async () => true },
+    browserAction: {
+      setBadgeBackgroundColor: async () => {},
+      setBadgeTextColor: async () => {},
+      setTitle: async () => {},
+      setBadgeText: async () => {}
+    }
+  };
+  const window = { setInterval: () => 1, clearInterval: () => {}, setTimeout, clearTimeout };
+  // The cold first check takes 400 ms, the repeat on the warm connection 25 ms.
+  const probeDurations = [400, 25];
+  let clock = 0;
+  let probes = 0;
+  const fetch = async (url) => {
+    if (String(url).includes("api.ipify.org")) return { json: async () => ({ ip: null }) };
+    clock += probeDurations[probes++] ?? 25;
+    return {};
+  };
+  const context = await loadScripts(
+    ["src/types.ts", "src/format.ts", "src/model.ts", "src/storage.ts", "src/monitor.ts"],
+    { browser, window, navigator: { onLine: true }, performance: { now: () => clock }, fetch }
+  );
+  const monitor = vm.runInContext("new ConnectionMonitor()", context);
+  await monitor.initialize();
+  await vi.waitFor(() => expect(monitor.snapshot().runtime.samples).toHaveLength(3));
+
+  const samples = monitor.snapshot().runtime.samples;
+  expect(samples[0]).toMatchObject({ status: "online", latencyMs: 30 });
+  expect(samples[1]).toMatchObject({ status: "no_data", latencyMs: null });
+  expect(samples[2]).toMatchObject({ status: "online", latencyMs: 25 });
+  expect(probes).toBe(2);
+  expect(stored.networkSpeedMonitor.runtime.samples).toHaveLength(3);
+});
+
+test("latency paths break at gaps and skip lone points", async () => {
+  const context = await loadScripts(["src/types.ts", "src/format.ts", "src/model.ts", "src/ui.ts"]);
+  const latencyPaths = vm.runInContext("latencyPaths", context);
+
+  const paths = latencyPaths([[0, 10], [5, 20], null, [10, 30], null, [15, 5], [20, 6]], 50);
+  expect(paths.line).toBe("M0.0,10.0 L5.0,20.0 M15.0,5.0 L20.0,6.0");
+  expect(paths.area).toBe(
+    "M0.0,50 L0.0,10.0 L5.0,20.0 L5.0,50 Z M15.0,50 L15.0,5.0 L20.0,6.0 L20.0,50 Z"
+  );
+});
+
 test("PDF stream length counts encoded bytes", async () => {
   const context = await loadScripts(["src/types.ts", "src/format.ts", "src/export.ts"]);
   const { createPdf } = vm.runInContext("({ createPdf })", context);

@@ -92,7 +92,7 @@ function renderPopup(snapshot: ExtensionSnapshot, hasEndpointPermission: boolean
             <g id="sparkline-failures"></g>
             <line id="sparkline-guide" class="sparkline-guide" y1="0" y2="${SPARKLINE_HEIGHT}" />
             <path id="sparkline-area" fill="url(#sparkline-fill)" />
-            <polyline id="sparkline-line" class="sparkline-line" />
+            <path id="sparkline-line" class="sparkline-line" />
           </svg>
         </div>
       </section>
@@ -174,7 +174,7 @@ function updateSparkline(snapshot: ExtensionSnapshot, state: DisplayState): void
     SPARKLINE_THRESHOLD_MS * 1.3,
     ...samples.map((sample) => sample.latencyMs ?? 0)
   );
-  const points: string[] = [];
+  const points: ([number, number] | null)[] = [];
   let failures = "";
   let bandStart: number | null = null;
   let bandEnd = 0;
@@ -196,8 +196,14 @@ function updateSparkline(snapshot: ExtensionSnapshot, state: DisplayState): void
     } else {
       closeBand();
     }
-    if (sample.latencyMs !== null) {
-      points.push(`${x.toFixed(1)},${sparklineY(sample.latencyMs, maxMs).toFixed(1)}`);
+    if (sample.status === "no_data") {
+      // Marks where monitoring stopped, e.g. while Firefox was closed.
+      if (index > 0 && samples[index - 1].status !== "no_data") {
+        failures += `<line class="chart-gap" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="0" y2="${SPARKLINE_HEIGHT}" />`;
+      }
+      points.push(null);
+    } else if (sample.latencyMs !== null) {
+      points.push([x, sparklineY(sample.latencyMs, maxMs)]);
     }
   });
   closeBand();
@@ -208,13 +214,9 @@ function updateSparkline(snapshot: ExtensionSnapshot, state: DisplayState): void
   threshold.setAttribute("y1", thresholdY);
   threshold.setAttribute("y2", thresholdY);
   setSvgMarkup(byId<SVGGElement>("sparkline-failures")!, failures);
-  byId<SVGPolylineElement>("sparkline-line")!.setAttribute("points", points.join(" "));
-  byId<SVGPathElement>("sparkline-area")!.setAttribute(
-    "d",
-    points.length > 1
-      ? `M${points[0].split(",")[0]},${SPARKLINE_HEIGHT} L${points.join(" L")} L${points[points.length - 1].split(",")[0]},${SPARKLINE_HEIGHT} Z`
-      : ""
-  );
+  const paths = latencyPaths(points, SPARKLINE_HEIGHT);
+  byId<SVGPathElement>("sparkline-line")!.setAttribute("d", paths.line);
+  byId<SVGPathElement>("sparkline-area")!.setAttribute("d", paths.area);
   showSparklineTip();
 }
 
@@ -234,8 +236,10 @@ function showSparklineTip(): void {
   }
 
   const ago = Date.now() - sample.at;
-  const value = sample.latencyMs === null ? "Failed" : `${sample.latencyMs} ms`;
-  setMarkup(tip, `${value} <small>${ago < 1_500 ? "now" : `${formatDuration(ago)} ago`}</small>`);
+  setMarkup(
+    tip,
+    `${describeSampleLatency(sample)} <small>${ago < 1_500 ? "now" : `${formatDuration(ago)} ago`}</small>`
+  );
   const ratio = sparkHoverIndex / (SPARKLINE_SAMPLES - 1);
   const half = tip.offsetWidth / 2 + 2;
   tip.style.left = `${Math.min(Math.max(ratio * container.clientWidth, half), container.clientWidth - half)}px`;

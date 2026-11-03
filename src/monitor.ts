@@ -30,10 +30,11 @@ class ConnectionMonitor {
   private probeGeneration = 0;
   private activeProbeController: AbortController | undefined;
   private lastIpFetchAt = 0;
+  private connectionWarm = false;
 
   async initialize(): Promise<void> {
     this.data = await loadStored();
-    this.runtime = { ...defaultRuntime(), ...this.data.runtime, samples: [] };
+    this.runtime = { ...this.data.runtime };
 
     const removedBootstrapErrors = this.removePermissionBootstrapErrors();
     const recordedNoData = this.recordMissedHeartbeat();
@@ -112,7 +113,12 @@ class ConnectionMonitor {
       this.data.settings.intervalSeconds * 1_000 * MISSED_HEARTBEAT_MULTIPLIER +
       MISSED_HEARTBEAT_GRACE_MS;
 
-    if (!lastHeartbeatAt || now - lastHeartbeatAt <= missedHeartbeatThreshold) {
+    // Already in a gap: recording it again would only add a duplicate gap sample.
+    if (
+      !lastHeartbeatAt ||
+      now - lastHeartbeatAt <= missedHeartbeatThreshold ||
+      this.runtime.status === "no_data"
+    ) {
       return false;
     }
 
@@ -138,6 +144,7 @@ class ConnectionMonitor {
 
   private restartMonitoring(): void {
     this.stopMonitoring();
+    this.connectionWarm = false;
 
     if (!this.data.settings.enabled) {
       return;
@@ -174,7 +181,15 @@ class ConnectionMonitor {
         await this.persist();
         if (generation !== this.probeGeneration || !this.data.settings.enabled) return;
       }
-      const result = await this.runConnectivityProbe(at, controller);
+      let result = await this.runConnectivityProbe(at, controller);
+      // The first check after (re)starting also pays for DNS and TLS setup, so its
+      // latency is not representative. Repeat it on the warm connection before recording.
+      // A failed first check is recorded as is, so outages are never hidden.
+      if (!this.connectionWarm && result.status === "online") {
+        this.connectionWarm = true;
+        if (generation !== this.probeGeneration) return;
+        result = await this.runConnectivityProbe(Date.now(), controller);
+      }
       if (generation !== this.probeGeneration || !this.data.settings.enabled) return;
 
       // Record connectivity as soon as the endpoint probe completes. The public-IP
@@ -292,8 +307,7 @@ class ConnectionMonitor {
   }
 
   private async persist(): Promise<void> {
-    const { samples, ...savedRuntime } = this.runtime;
-    this.data.runtime = savedRuntime;
+    this.data.runtime = { ...this.runtime, samples: [...this.runtime.samples] };
     await saveStored(this.data);
   }
 

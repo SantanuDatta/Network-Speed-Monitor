@@ -232,7 +232,7 @@ function renderShell(): string {
             <g id="rt-bands"></g>
             <line id="rt-guide" class="rt-guide" y1="0" y2="${CHART_HEIGHT}" />
             <path id="rt-area" fill="url(#rt-fill)" />
-            <polyline id="rt-line" class="rt-line" />
+            <path id="rt-line" class="rt-line" />
             <circle id="rt-hover-dot" class="rt-hover-dot" r="3.5" />
           </svg>
           <div class="rt-axis-x"><span id="rt-axis-start"></span><span>now</span></div>
@@ -427,7 +427,8 @@ function updateRealtime(current: ExtensionSnapshot, state: DisplayState, now: nu
     average === null ? "—" : `${Math.round(average)} <small>ms</small>`
   );
   setMarkup(byId("rt-jitter")!, jitter === null ? "—" : `${Math.round(jitter)} <small>ms</small>`);
-  setMarkup(byId("rt-failed")!, `${failed} <small>of ${samples.length}</small>`);
+  const checks = samples.filter((sample) => sample.status !== "no_data").length;
+  setMarkup(byId("rt-failed")!, `${failed} <small>of ${checks}</small>`);
   document.querySelectorAll<HTMLButtonElement>("#rt-range [data-range]").forEach((button) => {
     button.classList.toggle("is-selected", Number(button.dataset.range) === chartRangeSeconds);
   });
@@ -477,7 +478,7 @@ function updateChart(
   let bands = "";
   let bandStart: number | null = null;
   let bandEnd = 0;
-  const points: string[] = [];
+  const points: ([number, number] | null)[] = [];
   const closeBand = () => {
     if (bandStart === null) return;
     const from = Math.max(0, x(bandStart) - halfStep);
@@ -485,26 +486,29 @@ function updateChart(
     bands += `<rect x="${from.toFixed(1)}" y="0" width="${Math.max(3, to - from).toFixed(1)}" height="${CHART_HEIGHT}" />`;
     bandStart = null;
   };
-  samples.forEach((sample) => {
+  samples.forEach((sample, index) => {
     if (isFailureStatus(sample.status)) {
       bandStart ??= sample.at;
       bandEnd = sample.at;
     } else {
       closeBand();
     }
-    if (sample.latencyMs !== null) {
-      points.push(`${x(sample.at).toFixed(1)},${y(sample.latencyMs).toFixed(1)}`);
+    if (sample.status === "no_data") {
+      // Marks where monitoring stopped, e.g. while Firefox was closed.
+      if (index > 0 && samples[index - 1].status !== "no_data") {
+        const gapX = x(sample.at).toFixed(1);
+        bands += `<line class="chart-gap" x1="${gapX}" x2="${gapX}" y1="0" y2="${CHART_HEIGHT}" />`;
+      }
+      points.push(null);
+    } else if (sample.latencyMs !== null) {
+      points.push([x(sample.at), y(sample.latencyMs)]);
     }
   });
   closeBand();
   setSvgMarkup(byId<SVGGElement>("rt-bands")!, bands);
-  byId<SVGPolylineElement>("rt-line")!.setAttribute("points", points.join(" "));
-  byId<SVGPathElement>("rt-area")!.setAttribute(
-    "d",
-    points.length > 1
-      ? `M${points[0].split(",")[0]},${CHART_HEIGHT} L${points.join(" L")} L${points[points.length - 1].split(",")[0]},${CHART_HEIGHT} Z`
-      : ""
-  );
+  const paths = latencyPaths(points, CHART_HEIGHT);
+  byId<SVGPathElement>("rt-line")!.setAttribute("d", paths.line);
+  byId<SVGPathElement>("rt-area")!.setAttribute("d", paths.area);
   updateChartHover();
 }
 
@@ -535,7 +539,7 @@ function updateChartHover(): void {
   const x = chartX(sample.at, view);
   setMarkup(
     tip,
-    `${sample.latencyMs === null ? "Failed" : `${sample.latencyMs} ms`} <small>${formatClock(sample.at, snapshot.settings, true)}</small>`
+    `${describeSampleLatency(sample)} <small>${formatClock(sample.at, snapshot.settings, true)}</small>`
   );
   const svg = byId("rt-chart-svg")!;
   const center =
